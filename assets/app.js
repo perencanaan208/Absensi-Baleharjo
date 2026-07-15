@@ -5,7 +5,7 @@
 
 // >>> GANTI BARIS DI BAWAH INI dengan URL Web App Google Apps Script Anda <<<
 // Lihat README.md bagian "Setup Google Sheets" untuk cara mendapatkannya.
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyK1o7ISJO9AtB-Mou5B6IB3psGZ7CGnuTJofB_rdeHYB83wQIVjnBbFUoDvYcbYvRV7Q/exec";
+const SCRIPT_URL = "TEMPEL_URL_GOOGLE_APPS_SCRIPT_DI_SINI";
 
 const KUNCI_TOKEN = "absensi_baleharjo_admin_token";
 const AMBANG_KECOCOKAN = 0.5; // ambang jarak descriptor wajah (semakin kecil semakin ketat)
@@ -13,7 +13,7 @@ const AMBANG_KECOCOKAN = 0.5; // ambang jarak descriptor wajah (semakin kecil se
 /* ------------------------- Komunikasi ke Apps Script ------------------------- */
 
 async function panggilAPI(action, payload = {}, token) {
-  if (!SCRIPT_URL || SCRIPT_URL.includes("TEMPEL_URL")) {
+  if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbyK1o7ISJO9AtB-Mou5B6IB3psGZ7CGnuTJofB_rdeHYB83wQIVjnBbFUoDvYcbYvRV7Q/exec")) {
     throw new Error(
       "SCRIPT_URL belum diisi. Buka assets/app.js, ganti baris SCRIPT_URL dengan URL Google Apps Script Anda."
     );
@@ -95,24 +95,45 @@ function waktuJakartaSaatIni() {
   };
 }
 
+function cariKelompokJadwal(config, hariIndex) {
+  const jadwal = config?.jadwal ?? [];
+  return jadwal.find((k) => (k.hari || []).includes(hariIndex)) || null;
+}
+
+function ringkasanJadwal(config) {
+  const jadwal = config?.jadwal ?? [];
+  return jadwal.map((k) => {
+    const label = k.label || k.hari.map((h) => NAMA_HARI[h]).join(", ");
+    return `${label}: ${k.jamBuka}–${k.jamTutup} WIB`;
+  });
+}
+
 function statusJadwal(config) {
   const waktu = waktuJakartaSaatIni();
-  const hariAktif = config?.hariAktif ?? [1, 2, 3, 4, 5];
-  const [jamBukaJ, jamBukaM] = (config?.jamBuka ?? "07:00").split(":").map(Number);
-  const [jamTutupJ, jamTutupM] = (config?.jamTutup ?? "16:00").split(":").map(Number);
+  const kelompok = cariKelompokJadwal(config, waktu.hariIndex);
+
+  if (!kelompok) {
+    return {
+      buka: false,
+      waktu,
+      kelompok: null,
+      pesan: `Hari ${waktu.namaHari} bukan hari kerja. Absensi ditutup.`,
+    };
+  }
+
+  const [jamBukaJ, jamBukaM] = (kelompok.jamBuka ?? "07:00").split(":").map(Number);
+  const [jamTutupJ, jamTutupM] = (kelompok.jamTutup ?? "16:00").split(":").map(Number);
   const menitSekarang = waktu.jam * 60 + waktu.menit;
   const menitBuka = jamBukaJ * 60 + jamBukaM;
   const menitTutup = jamTutupJ * 60 + jamTutupM;
-  const hariDiizinkan = hariAktif.includes(waktu.hariIndex);
   const dalamJamKerja = menitSekarang >= menitBuka && menitSekarang <= menitTutup;
   return {
-    buka: hariDiizinkan && dalamJamKerja,
+    buka: dalamJamKerja,
     waktu,
-    pesan: !hariDiizinkan
-      ? `Hari ${waktu.namaHari} bukan hari kerja. Absensi ditutup.`
-      : !dalamJamKerja
-      ? `Absensi hanya dibuka pukul ${config?.jamBuka ?? "07:00"}–${config?.jamTutup ?? "16:00"} WIB.`
-      : "Absensi sedang dibuka.",
+    kelompok,
+    pesan: dalamJamKerja
+      ? "Absensi sedang dibuka."
+      : `Absensi hari ${waktu.namaHari} (${kelompok.label || "hari ini"}) dibuka pukul ${kelompok.jamBuka}–${kelompok.jamTutup} WIB.`,
   };
 }
 
