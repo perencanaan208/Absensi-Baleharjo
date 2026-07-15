@@ -120,17 +120,12 @@
           </div>
         </div>
         <div>
-          <h3 class="mb-2 font-display text-base font-semibold" style="color:var(--ijo-tua)">Jam Layanan</h3>
-          <div class="flex items-center gap-2">
-            <input type="time" id="cfgJamBuka" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
-            <span>–</span>
-            <input type="time" id="cfgJamTutup" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
-            <span class="font-mono text-xs" style="color:var(--tinta-lembut)">WIB</span>
-          </div>
-        </div>
-        <div>
-          <h3 class="mb-2 font-display text-base font-semibold" style="color:var(--ijo-tua)">Hari Kerja</h3>
-          <div id="hariKerjaWrap" class="flex flex-wrap gap-2"></div>
+          <h3 class="mb-1 font-display text-base font-semibold" style="color:var(--ijo-tua)">Jadwal Layanan</h3>
+          <p class="mb-3 text-xs italic" style="color:var(--tinta-lembut)">Buat kelompok jam berbeda untuk hari yang berbeda, misalnya Jumat pulang lebih awal.</p>
+          <div id="jadwalGroupsWrap" class="flex flex-col gap-3"></div>
+          <button type="button" onclick="tambahKelompokJadwal()" class="mt-3 rounded-lg border-2 border-dashed px-4 py-2 text-sm" style="border-color:var(--ijo); color:var(--ijo)">
+            + Tambah Kelompok Jadwal
+          </button>
         </div>
         <p id="errorPengaturan" class="text-sm hidden" style="color:var(--merah-jaga)"></p>
         <button id="btnSimpanPengaturan" class="rounded-xl py-3 font-semibold" style="background:var(--emas-padi); color:var(--ijo-tua)">Simpan Pengaturan</button>
@@ -154,7 +149,10 @@ const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
 let DESCRIPTOR_BARU = null;
 let STREAM_ADMIN = null;
-let HARI_AKTIF_STATE = [1,2,3,4,5];
+let JADWAL_STATE = [
+  { label: "Senin - Kamis", hari: [1,2,3,4], jamBuka: "07:00", jamTutup: "16:00" },
+  { label: "Jumat", hari: [5], jamBuka: "07:00", jamTutup: "11:00" },
+];
 
 if (TOKEN) tampilkanDashboard();
 
@@ -320,29 +318,84 @@ async function muatPengaturan() {
   document.getElementById("cfgLat").value = cfg.lat ?? "";
   document.getElementById("cfgLon").value = cfg.lon ?? "";
   document.getElementById("cfgRadius").value = cfg.radiusMeter ?? 30;
-  document.getElementById("cfgJamBuka").value = cfg.jamBuka || "07:00";
-  document.getElementById("cfgJamTutup").value = cfg.jamTutup || "16:00";
-  HARI_AKTIF_STATE = cfg.hariAktif || [1,2,3,4,5];
-  renderHariKerja();
+
+  JADWAL_STATE = (cfg.jadwal && cfg.jadwal.length > 0) ? cfg.jadwal : JADWAL_STATE;
+  renderJadwalGroups();
 }
 
-function renderHariKerja() {
-  const wrap = document.getElementById("hariKerjaWrap");
-  wrap.innerHTML = HARI_LABEL.map((label, i) => `
-    <button type="button" onclick="toggleHari(${i})" class="rounded-full px-4 py-2 text-sm"
-      style="${HARI_AKTIF_STATE.includes(i)
-        ? "background:var(--ijo-tua); color:var(--kertas)"
-        : "border:1px solid var(--kertas-gelap); color:var(--tinta-lembut)"}">
-      ${label}
-    </button>
+function renderJadwalGroups() {
+  const wrap = document.getElementById("jadwalGroupsWrap");
+  wrap.innerHTML = JADWAL_STATE.map((kelompok, gi) => `
+    <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+      <div class="mb-3 flex items-center gap-2">
+        <input value="${escapeHtml(kelompok.label || "")}" placeholder="Nama kelompok, mis. Senin - Kamis"
+          oninput="ubahLabelKelompok(${gi}, this.value)"
+          class="flex-1 rounded-lg px-3 py-2 text-sm font-medium" style="border:1px solid var(--kertas-gelap)">
+        ${JADWAL_STATE.length > 1
+          ? `<button type="button" onclick="hapusKelompokJadwal(${gi})" class="font-mono text-xs underline shrink-0" style="color:var(--merah-jaga)">Hapus</button>`
+          : ""}
+      </div>
+      <div class="mb-3 flex flex-wrap gap-1.5">
+        ${HARI_LABEL.map((label, hi) => `
+          <button type="button" onclick="toggleHariDiKelompok(${gi}, ${hi})" class="rounded-full px-3 py-1.5 text-xs"
+            style="${kelompok.hari.includes(hi)
+              ? "background:var(--ijo-tua); color:var(--kertas)"
+              : "border:1px solid var(--kertas-gelap); color:var(--tinta-lembut)"}">
+            ${label}
+          </button>
+        `).join("")}
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="time" value="${kelompok.jamBuka}" oninput="ubahJamKelompok(${gi}, 'jamBuka', this.value)"
+          class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        <span>–</span>
+        <input type="time" value="${kelompok.jamTutup}" oninput="ubahJamKelompok(${gi}, 'jamTutup', this.value)"
+          class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        <span class="font-mono text-xs" style="color:var(--tinta-lembut)">WIB</span>
+      </div>
+    </div>
   `).join("");
+
+  const hariDipakai = JADWAL_STATE.flatMap(k => k.hari);
+  const hariBelumDipakai = HARI_LABEL.map((_, i) => i).filter(i => !hariDipakai.includes(i));
+  if (hariBelumDipakai.length > 0) {
+    wrap.innerHTML += `<p class="text-xs italic" style="color:var(--tinta-lembut)">
+      ${hariBelumDipakai.map(i => HARI_LABEL[i]).join(", ")} belum masuk kelompok manapun — absensi otomatis ditutup di hari tersebut.
+    </p>`;
+  }
 }
 
-function toggleHari(i) {
-  HARI_AKTIF_STATE = HARI_AKTIF_STATE.includes(i)
-    ? HARI_AKTIF_STATE.filter(h => h !== i)
-    : [...HARI_AKTIF_STATE, i].sort();
-  renderHariKerja();
+function toggleHariDiKelompok(groupIndex, hariIndex) {
+  const sudahAda = JADWAL_STATE[groupIndex].hari.includes(hariIndex);
+  if (sudahAda) {
+    JADWAL_STATE[groupIndex].hari = JADWAL_STATE[groupIndex].hari.filter(h => h !== hariIndex);
+  } else {
+    // Satu hari hanya boleh masuk satu kelompok — lepas dari kelompok lain dulu
+    JADWAL_STATE.forEach(k => { k.hari = k.hari.filter(h => h !== hariIndex); });
+    JADWAL_STATE[groupIndex].hari.push(hariIndex);
+    JADWAL_STATE[groupIndex].hari.sort();
+  }
+  renderJadwalGroups();
+}
+
+function ubahLabelKelompok(groupIndex, value) {
+  JADWAL_STATE[groupIndex].label = value;
+}
+
+function ubahJamKelompok(groupIndex, field, value) {
+  JADWAL_STATE[groupIndex][field] = value;
+}
+
+function tambahKelompokJadwal() {
+  JADWAL_STATE.push({ label: "", hari: [], jamBuka: "07:00", jamTutup: "16:00" });
+  renderJadwalGroups();
+}
+
+function hapusKelompokJadwal(groupIndex) {
+  if (JADWAL_STATE.length <= 1) return;
+  if (!confirm("Hapus kelompok jadwal ini?")) return;
+  JADWAL_STATE.splice(groupIndex, 1);
+  renderJadwalGroups();
 }
 
 function pakaiLokasiSaatIni() {
@@ -357,6 +410,14 @@ document.getElementById("formPengaturan").addEventListener("submit", async (e) =
   const btn = document.getElementById("btnSimpanPengaturan");
   const err = document.getElementById("errorPengaturan");
   err.classList.add("hidden");
+
+  const kelompokKosong = JADWAL_STATE.some(k => k.hari.length === 0);
+  if (kelompokKosong) {
+    err.textContent = "Setiap kelompok jadwal harus punya minimal 1 hari yang dipilih.";
+    err.classList.remove("hidden");
+    return;
+  }
+
   btn.disabled = true; btn.textContent = "Menyimpan…";
   try {
     await api.updateConfig({
@@ -364,9 +425,7 @@ document.getElementById("formPengaturan").addEventListener("submit", async (e) =
       lat: parseFloat(document.getElementById("cfgLat").value),
       lon: parseFloat(document.getElementById("cfgLon").value),
       radiusMeter: parseInt(document.getElementById("cfgRadius").value, 10),
-      jamBuka: document.getElementById("cfgJamBuka").value,
-      jamTutup: document.getElementById("cfgJamTutup").value,
-      hariAktif: HARI_AKTIF_STATE,
+      jadwal: JADWAL_STATE,
     }, TOKEN);
     btn.textContent = "✓ Tersimpan";
     setTimeout(() => { btn.textContent = "Simpan Pengaturan"; }, 2500);
