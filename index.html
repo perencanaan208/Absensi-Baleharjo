@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Absensi Digital — Pemerintah Desa Baleharjo</title>
+<meta name="description" content="Presensi pegawai Pemerintah Desa Baleharjo dengan verifikasi wajah dan lokasi kantor.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#17352A">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="min-h-screen">
+
+<header class="pola-kawung-terang relative overflow-hidden pb-10 pt-8 text-[var(--kertas)]" style="background:var(--ijo-tua)">
+  <div class="mx-auto max-w-md px-5">
+    <div class="flex items-center gap-3">
+      <div class="stempel h-12 w-12" style="border-color:var(--emas-padi); color:var(--emas-padi)">
+        <span class="font-display text-lg font-bold">B</span>
+      </div>
+      <div>
+        <p class="font-mono text-[0.65rem] uppercase tracking-[0.2em]" style="color:var(--ijo-muda)">Pemerintah Desa</p>
+        <h1 class="font-display text-2xl font-semibold leading-tight">Baleharjo</h1>
+      </div>
+    </div>
+
+    <div class="mt-8 flex items-end justify-between">
+      <div>
+        <p class="font-mono text-xs" style="color:var(--ijo-muda)">Waktu sekarang (WIB)</p>
+        <p id="jamSekarang" class="font-display text-4xl font-medium tabular-nums">--:--:--</p>
+      </div>
+      <span id="badgeStatus" class="rounded-full px-3 py-1 font-mono text-[0.65rem] uppercase tracking-wider bg-white/15">
+        ○ Memuat…
+      </span>
+    </div>
+  </div>
+</header>
+
+<div id="pesanKoneksi" class="mx-auto max-w-md px-5 hidden">
+  <p class="mt-3 rounded-xl px-4 py-2 text-xs" style="border:1px solid rgba(201,154,59,.5); background:rgba(228,184,92,.2); color:var(--tinta-lembut)"></p>
+</div>
+
+<section class="mx-auto max-w-md px-5 pb-16 pt-8">
+
+  <!-- STATE: memuat -->
+  <div id="stateMemuatAwal" class="flex justify-center py-16">
+    <div class="spinner" style="border-color:rgba(23,53,42,.2); border-top-color:var(--ijo)"></div>
+  </div>
+
+  <!-- STATE: tutup -->
+  <div id="stateTutup" class="hidden flex-col items-center gap-4 rounded-2xl px-6 py-10 text-center" style="border:1px solid var(--kertas-gelap); background:rgba(255,255,255,.5)">
+    <div class="stempel h-16 w-16" style="border-color:var(--merah-jaga); color:var(--merah-jaga)"><span class="text-xl">✕</span></div>
+    <h2 class="font-display text-xl font-semibold" style="color:var(--ijo-tua)">Absensi Belum/Tidak Dibuka</h2>
+    <p id="pesanTutup" class="text-sm" style="color:var(--tinta-lembut)"></p>
+    <p id="jamLayananTeks" class="font-mono text-xs" style="color:var(--tinta-lembut)"></p>
+  </div>
+
+  <!-- STATE: pilih jenis -->
+  <div id="statePilihJenis" class="hidden flex-col gap-4">
+    <p class="text-center text-sm" style="color:var(--tinta-lembut)">
+      Pilih jenis presensi. Sistem akan memeriksa lokasi Anda, lalu memverifikasi wajah.
+    </p>
+    <button onclick="mulaiCekLokasi('masuk')" class="rounded-2xl px-6 py-5 text-left font-display text-xl font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98]" style="background:var(--ijo-tua)">
+      Absen Masuk
+      <span class="mt-1 block font-mono text-xs font-normal" style="color:var(--ijo-muda)">Mulai jam kerja</span>
+    </button>
+    <button onclick="mulaiCekLokasi('pulang')" class="rounded-2xl px-6 py-5 text-left font-display text-xl font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98]" style="background:var(--nila)">
+      Absen Pulang
+      <span class="mt-1 block font-mono text-xs font-normal text-white/60">Akhir jam kerja</span>
+    </button>
+  </div>
+
+  <!-- STATE: memuat generik -->
+  <div id="stateMemuat" class="hidden flex-col items-center gap-4 py-16 text-center">
+    <div class="animasi-nadi h-14 w-14 rounded-full" style="background:var(--ijo)"></div>
+    <p id="teksMemuat" class="text-sm" style="color:var(--tinta-lembut)"></p>
+  </div>
+
+  <!-- STATE: gagal (lokasi / wajah) -->
+  <div id="stateGagal" class="hidden flex-col items-center gap-4 rounded-2xl px-6 py-8 text-center" style="border:1px solid rgba(179,69,44,.3); background:rgba(179,69,44,.05)">
+    <div class="stempel h-14 w-14" style="border-color:var(--merah-jaga); color:var(--merah-jaga)"><span class="text-lg">!</span></div>
+    <h2 id="judulGagal" class="font-display text-lg font-semibold" style="color:var(--merah-jaga)"></h2>
+    <p id="pesanGagal" class="text-sm" style="color:var(--tinta-lembut)"></p>
+    <div class="mt-2 flex w-full gap-3">
+      <button onclick="kembaliAwal()" class="flex-1 rounded-xl px-4 py-3 text-sm" style="border:1px solid rgba(75,86,77,.4); color:var(--tinta-lembut)">Kembali</button>
+      <button id="btnCobaLagi" class="flex-1 rounded-xl px-4 py-3 text-sm font-medium text-[var(--kertas)]" style="background:var(--ijo-tua)">Coba Lagi</button>
+    </div>
+  </div>
+
+  <!-- STATE: wajah -->
+  <div id="stateWajah" class="hidden flex-col items-center gap-6">
+    <span id="badgeJenis" class="rounded-full px-4 py-1 font-mono text-xs uppercase tracking-wider" style="background:rgba(23,53,42,.1); color:var(--ijo-tua)"></span>
+    <div id="kameraBingkai" class="kamera-bingkai">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="kamera-overlay"></div>
+      <div id="kameraStatus" class="kamera-status" style="background:var(--ijo-tua)">
+        <div class="spinner"></div>
+        <p class="font-mono text-xs">Menyiapkan kamera & model wajah…</p>
+      </div>
+    </div>
+    <p id="labelKamera" class="text-center text-sm" style="color:var(--tinta-lembut)">Posisikan wajah di dalam bingkai</p>
+    <button onclick="verifikasiWajah()" class="w-full max-w-xs rounded-2xl px-6 py-4 font-display text-lg font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98]" style="background:var(--ijo-tua)">
+      Verifikasi & Catat Absen
+    </button>
+    <button onclick="kembaliAwal()" class="text-sm underline" style="color:var(--tinta-lembut)">Batal</button>
+  </div>
+
+  <!-- STATE: sukses -->
+  <div id="stateSukses" class="hidden flex-col items-center gap-8 py-6">
+    <div class="flex flex-col items-center gap-4">
+      <div id="stempelSukses" class="stempel animasi-stempel h-40 w-40 p-4">
+        <span class="font-display text-[0.65rem] tracking-[0.25em]">DESA BALEHARJO</span>
+        <span id="labelStempel" class="font-display text-lg font-semibold leading-none"></span>
+        <span id="jamStempel" class="font-mono text-xs"></span>
+      </div>
+      <p id="pesanSukses" class="text-center font-display text-xl" style="color:var(--ijo-tua)"></p>
+    </div>
+    <button onclick="kembaliAwal()" class="rounded-2xl border-2 px-6 py-3 font-medium" style="border-color:var(--ijo-tua); color:var(--ijo-tua)">Selesai</button>
+  </div>
+
+</section>
+
+<footer class="mx-auto max-w-md px-5 pb-8 text-center">
+  <a href="admin.html" class="font-mono text-xs underline" style="color:rgba(75,86,77,.6)">Masuk sebagai admin</a>
+</footer>
+
+<script src="assets/face-api.min.js"></script>
+<script src="assets/app.js"></script>
+<script>
+/* ============================ State halaman ============================ */
+let CONFIG = null;
+let JENIS = null;
+let LOKASI = null;
+let JARAK = null;
+let STREAM = null;
+let LOOP_DETEKSI = false;
+
+const KONFIG_DEFAULT = {
+  namaKantor: "Kantor Desa Baleharjo",
+  lat: -8.0326, lon: 112.7361,
+  radiusMeter: 30,
+  hariAktif: [1,2,3,4,5],
+  jamBuka: "07:00", jamTutup: "16:00",
+};
+
+function tampilkan(id) {
+  ["stateMemuatAwal","stateTutup","statePilihJenis","stateMemuat","stateGagal","stateWajah","stateSukses"]
+    .forEach(s => document.getElementById(s).classList.add("hidden"));
+  const el = document.getElementById(id);
+  el.classList.remove("hidden");
+  el.classList.add("flex");
+}
+
+function updateJam() {
+  document.getElementById("jamSekarang").textContent = waktuJakartaSaatIni().jamMenitTeks;
+}
+setInterval(updateJam, 1000);
+updateJam();
+
+function updateBadge(buka) {
+  const badge = document.getElementById("badgeStatus");
+  if (buka) {
+    badge.textContent = "● Absensi Dibuka";
+    badge.style.background = "var(--emas-padi)";
+    badge.style.color = "var(--ijo-tua)";
+  } else {
+    badge.textContent = "○ Absensi Ditutup";
+    badge.style.background = "rgba(255,255,255,.15)";
+    badge.style.color = "white";
+  }
+}
+
+async function init() {
+  try {
+    const res = await api.getConfig();
+    CONFIG = Object.assign({}, KONFIG_DEFAULT, res.config);
+  } catch (err) {
+    CONFIG = KONFIG_DEFAULT;
+    const kotak = document.getElementById("pesanKoneksi");
+    kotak.classList.remove("hidden");
+    kotak.querySelector("p").textContent = "Belum tersambung ke server data. Menampilkan mode pratinjau. (" + err.message + ")";
+  }
+  const st = statusJadwal(CONFIG);
+  updateBadge(st.buka);
+  if (st.buka) {
+    tampilkan("statePilihJenis");
+  } else {
+    document.getElementById("pesanTutup").textContent = st.pesan;
+    document.getElementById("jamLayananTeks").textContent =
+      `Jam layanan: ${CONFIG.jamBuka}–${CONFIG.jamTutup} WIB`;
+    tampilkan("stateTutup");
+  }
+}
+init();
+
+/* ============================ Alur absen ============================ */
+
+async function mulaiCekLokasi(jenisAbsen) {
+  JENIS = jenisAbsen;
+  document.getElementById("teksMemuat").textContent = "Memeriksa lokasi Anda…";
+  tampilkan("stateMemuat");
+  try {
+    const loc = await ambilLokasiSaatIni();
+    const d = hitungJarakMeter(loc.lat, loc.lon, CONFIG.lat, CONFIG.lon);
+    LOKASI = loc; JARAK = d;
+    if (d <= (CONFIG.radiusMeter || 30)) {
+      mulaiKamera();
+    } else {
+      tampilkanGagal(
+        "Lokasi di luar jangkauan kantor",
+        `Jarak Anda ${Math.round(d)} meter dari kantor. Absen hanya berlaku dalam radius ${CONFIG.radiusMeter} meter.`,
+        () => mulaiCekLokasi(JENIS)
+      );
+    }
+  } catch (err) {
+    tampilkanGagal(
+      "Lokasi di luar jangkauan kantor",
+      err.code === 1 ? "Izin lokasi ditolak. Aktifkan GPS/izin lokasi untuk melanjutkan absen." : "Gagal mengambil lokasi. Pastikan GPS aktif dan coba lagi.",
+      () => mulaiCekLokasi(JENIS)
+    );
+  }
+}
+
+function tampilkanGagal(judul, pesan, aksiCobaLagi) {
+  document.getElementById("judulGagal").textContent = judul;
+  document.getElementById("pesanGagal").textContent = pesan;
+  const btn = document.getElementById("btnCobaLagi");
+  btn.onclick = aksiCobaLagi;
+  tampilkan("stateGagal");
+}
+
+async function mulaiKamera() {
+  document.getElementById("badgeJenis").textContent = JENIS === "masuk" ? "Absen Masuk" : "Absen Pulang";
+  tampilkan("stateWajah");
+  const bingkai = document.getElementById("kameraBingkai");
+  const statusEl = document.getElementById("kameraStatus");
+  const video = document.getElementById("video");
+  bingkai.className = "kamera-bingkai";
+  statusEl.style.display = "flex";
+  statusEl.innerHTML = '<div class="spinner"></div><p class="font-mono text-xs">Menyiapkan kamera & model wajah…</p>';
+
+  try {
+    await muatModelWajah();
+    STREAM = await nyalakanKamera(video);
+    statusEl.style.display = "none";
+    LOOP_DETEKSI = true;
+    loopDeteksiWajah();
+  } catch (err) {
+    statusEl.style.display = "flex";
+    statusEl.style.background = "var(--merah-jaga)";
+    statusEl.innerHTML = `<p class="text-sm px-2">${
+      err.name === "NotAllowedError" ? "Izin kamera ditolak. Aktifkan izin kamera di pengaturan browser." : "Kamera tidak dapat diakses di perangkat ini."
+    }</p>`;
+    bingkai.classList.add("error");
+  }
+}
+
+async function loopDeteksiWajah() {
+  const video = document.getElementById("video");
+  const bingkai = document.getElementById("kameraBingkai");
+  const label = document.getElementById("labelKamera");
+  while (LOOP_DETEKSI) {
+    if (video.readyState === 4) {
+      try {
+        const hasil = await deteksiSatuWajah(video);
+        bingkai.classList.toggle("terdeteksi", !!hasil);
+        label.textContent = hasil ? "Wajah terdeteksi — siap diverifikasi" : "Posisikan wajah di dalam bingkai";
+      } catch {}
+    }
+    await new Promise(r => setTimeout(r, 350));
+  }
+}
+
+async function verifikasiWajah() {
+  LOOP_DETEKSI = false;
+  document.getElementById("teksMemuat").textContent = "Mencocokkan wajah & mencatat absen…";
+  tampilkan("stateMemuat");
+  try {
+    const video = document.getElementById("video");
+    const hasilDeteksi = await deteksiSatuWajah(video);
+    if (!hasilDeteksi) {
+      matikanKamera(STREAM);
+      tampilkanGagal("Verifikasi tidak berhasil", "Wajah tidak terdeteksi dengan jelas. Pastikan pencahayaan cukup.", () => mulaiKamera());
+      return;
+    }
+    const descriptor = Array.from(hasilDeteksi.descriptor);
+    const { pegawaiList } = await api.getPegawaiUntukAbsen();
+    const cocok = cocokkanWajah(descriptor, pegawaiList);
+
+    if (!cocok) {
+      matikanKamera(STREAM);
+      tampilkanGagal("Verifikasi tidak berhasil", "Wajah tidak dikenali sebagai pegawai terdaftar. Hubungi admin jika Anda pegawai aktif.", () => mulaiKamera());
+      return;
+    }
+
+    await api.catatAbsen({
+      pegawaiId: cocok.pegawai.id,
+      nama: cocok.pegawai.nama,
+      jenis: JENIS,
+      lat: LOKASI.lat, lon: LOKASI.lon,
+      jarakMeter: Math.round(JARAK),
+      skorKecocokan: Number(cocok.jarak.toFixed(3)),
+    });
+
+    matikanKamera(STREAM);
+    const jamSkrg = waktuJakartaSaatIni().jamMenitTeks;
+    const stempel = document.getElementById("stempelSukses");
+    stempel.style.color = JENIS === "masuk" ? "var(--ijo)" : "var(--nila)";
+    document.getElementById("labelStempel").textContent = JENIS === "masuk" ? "HADIR MASUK" : "HADIR PULANG";
+    document.getElementById("jamStempel").textContent = jamSkrg;
+    document.getElementById("pesanSukses").textContent = `Selamat bertugas, ${cocok.pegawai.nama}`;
+    stempel.classList.remove("animasi-stempel");
+    void stempel.offsetWidth;
+    stempel.classList.add("animasi-stempel");
+    tampilkan("stateSukses");
+  } catch (err) {
+    matikanKamera(STREAM);
+    tampilkanGagal("Verifikasi tidak berhasil", err.message || "Terjadi kesalahan saat mencatat absensi.", () => mulaiKamera());
+  }
+}
+
+function kembaliAwal() {
+  LOOP_DETEKSI = false;
+  matikanKamera(STREAM);
+  JENIS = null; LOKASI = null; JARAK = null;
+  const st = statusJadwal(CONFIG);
+  updateBadge(st.buka);
+  if (st.buka) tampilkan("statePilihJenis");
+  else {
+    document.getElementById("pesanTutup").textContent = st.pesan;
+    tampilkan("stateTutup");
+  }
+}
+</script>
+</body>
+</html>

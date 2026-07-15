@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Admin — Absensi Baleharjo</title>
+<link rel="icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;0,600;0,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="min-h-screen">
+
+<!-- ===================== LOGIN ===================== -->
+<div id="viewLogin" class="flex min-h-screen flex-col items-center justify-center px-6">
+  <div class="mb-8 text-center">
+    <div class="stempel mx-auto mb-4 h-14 w-14" style="border-color:var(--ijo-tua); color:var(--ijo-tua)">
+      <span class="font-display text-xl font-bold">B</span>
+    </div>
+    <h1 class="font-display text-2xl font-semibold" style="color:var(--ijo-tua)">Admin Absensi Baleharjo</h1>
+    <p class="mt-1 text-sm" style="color:var(--tinta-lembut)">Khusus petugas pengelola data pegawai</p>
+  </div>
+  <form id="formLogin" class="w-full max-w-xs">
+    <input type="password" id="inputPassword" placeholder="Kata sandi admin" required
+      class="w-full rounded-xl px-4 py-3 outline-none" style="border:1px solid var(--kertas-gelap); background:white">
+    <p id="errorLogin" class="mt-2 text-sm hidden" style="color:var(--merah-jaga)"></p>
+    <button id="btnLogin" class="mt-4 w-full rounded-xl px-4 py-3 font-medium text-[var(--kertas)]" style="background:var(--ijo-tua)">Masuk</button>
+  </form>
+  <a href="index.html" class="mt-6 text-sm underline" style="color:var(--tinta-lembut)">Kembali ke halaman absen</a>
+</div>
+
+<!-- ===================== DASHBOARD ===================== -->
+<div id="viewDashboard" class="hidden pb-16">
+  <header class="px-5 py-5 text-[var(--kertas)]" style="background:var(--ijo-tua)">
+    <div class="mx-auto flex max-w-3xl items-center justify-between">
+      <div>
+        <p class="font-mono text-[0.65rem] uppercase tracking-[0.2em]" style="color:var(--ijo-muda)">Panel Admin</p>
+        <h1 class="font-display text-xl font-semibold">Desa Baleharjo</h1>
+      </div>
+      <button onclick="logout()" class="font-mono text-xs underline">Keluar</button>
+    </div>
+  </header>
+
+  <nav class="sticky top-0 z-10 border-b" style="border-color:var(--kertas-gelap); background:rgba(242,238,226,.95); backdrop-filter:blur(6px)">
+    <div class="mx-auto flex max-w-3xl gap-1 px-3 py-2">
+      <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="pegawai" onclick="gantiTab('pegawai')">Data Pegawai</button>
+      <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="pengaturan" onclick="gantiTab('pengaturan')">Jadwal &amp; Lokasi</button>
+      <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="rekap" onclick="gantiTab('rekap')">Rekap Absensi</button>
+    </div>
+  </nav>
+
+  <div class="mx-auto max-w-3xl px-5 pt-6">
+
+    <!-- TAB PEGAWAI -->
+    <div id="tabPegawai" class="tabPanel">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Daftar Pegawai <span id="jumlahPegawai"></span></h2>
+        <button onclick="bukaFormPegawai()" class="rounded-full px-4 py-2 text-sm font-semibold" style="background:var(--emas-padi); color:var(--ijo-tua)">+ Tambah Pegawai</button>
+      </div>
+      <p id="errorPegawai" class="text-sm hidden" style="color:var(--merah-jaga)"></p>
+
+      <!-- form tambah pegawai -->
+      <form id="formPegawai" class="hidden mb-6 flex-col gap-3 rounded-2xl p-5" style="border:1px solid var(--kertas-gelap); background:white">
+        <h3 class="font-display text-base font-semibold" style="color:var(--ijo-tua)">Pegawai Baru</h3>
+        <input required id="inputNama" placeholder="Nama lengkap" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        <div class="flex gap-2">
+          <input id="inputNip" placeholder="NIP (opsional)" class="flex-1 rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+          <input id="inputJabatan" placeholder="Jabatan" class="flex-1 rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        </div>
+
+        <button type="button" id="btnBukaKamera" onclick="bukaKameraAdmin()" class="rounded-lg border-2 border-dashed px-4 py-3 text-sm" style="border-color:var(--ijo); color:var(--ijo)">
+          Ambil Foto Wajah
+        </button>
+
+        <div id="kameraAdminWrap" class="hidden flex-col items-center gap-3">
+          <div id="kameraAdminBingkai" class="kamera-bingkai">
+            <video id="videoAdmin" autoplay playsinline muted></video>
+            <div class="kamera-overlay"></div>
+          </div>
+          <button type="button" onclick="rekamWajahAdmin()" class="rounded-lg px-4 py-2 text-sm font-medium text-[var(--kertas)]" style="background:var(--ijo-tua)">Rekam Wajah Ini</button>
+        </div>
+
+        <div id="wajahTersimpanInfo" class="hidden items-center justify-between rounded-lg px-3 py-2 text-sm" style="background:rgba(44,107,78,.1); color:var(--ijo-tua)">
+          <span>✓ Wajah berhasil direkam</span>
+          <button type="button" onclick="bukaKameraAdmin()" class="underline">Ulangi</button>
+        </div>
+
+        <p id="errorFormPegawai" class="text-sm hidden" style="color:var(--merah-jaga)"></p>
+
+        <div class="mt-2 flex gap-3">
+          <button type="button" onclick="tutupFormPegawai()" class="flex-1 rounded-lg py-2 text-sm" style="border:1px solid var(--kertas-gelap)">Batal</button>
+          <button id="btnSimpanPegawai" class="flex-1 rounded-lg py-2 text-sm font-semibold" style="background:var(--emas-padi); color:var(--ijo-tua)">Simpan Pegawai</button>
+        </div>
+      </form>
+
+      <div id="daftarPegawai" class="flex flex-col gap-2">
+        <p class="text-sm" style="color:var(--tinta-lembut)">Memuat data…</p>
+      </div>
+    </div>
+
+    <!-- TAB PENGATURAN -->
+    <div id="tabPengaturan" class="tabPanel hidden">
+      <form id="formPengaturan" class="flex flex-col gap-6 pb-10">
+        <div>
+          <h3 class="mb-2 font-display text-base font-semibold" style="color:var(--ijo-tua)">Nama Instansi</h3>
+          <input id="cfgNamaKantor" class="w-full rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        </div>
+        <div>
+          <h3 class="mb-2 font-display text-base font-semibold" style="color:var(--ijo-tua)">Lokasi Kantor &amp; Radius</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <input type="number" step="0.000001" id="cfgLat" placeholder="Latitude" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+            <input type="number" step="0.000001" id="cfgLon" placeholder="Longitude" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+          </div>
+          <button type="button" onclick="pakaiLokasiSaatIni()" class="mt-2 font-mono text-xs underline" style="color:var(--ijo)">Gunakan lokasi perangkat saat ini</button>
+          <div class="mt-3 flex items-center gap-2">
+            <input type="number" id="cfgRadius" class="w-24 rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+            <span class="text-sm" style="color:var(--tinta-lembut)">meter radius absen</span>
+          </div>
+        </div>
+        <div>
+          <h3 class="mb-2 font-display text-base font-semibold" style="color:var(--ijo-tua)">Jam Layanan</h3>
+          <div class="flex items-center gap-2">
+            <input type="time" id="cfgJamBuka" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+            <span>–</span>
+            <input type="time" id="cfgJamTutup" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+            <span class="font-mono text-xs" style="color:var(--tinta-lembut)">WIB</span>
+          </div>
+        </div>
+        <div>
+          <h3 class="mb-2 font-display text-base font-semibold" style="color:var(--ijo-tua)">Hari Kerja</h3>
+          <div id="hariKerjaWrap" class="flex flex-wrap gap-2"></div>
+        </div>
+        <p id="errorPengaturan" class="text-sm hidden" style="color:var(--merah-jaga)"></p>
+        <button id="btnSimpanPengaturan" class="rounded-xl py-3 font-semibold" style="background:var(--emas-padi); color:var(--ijo-tua)">Simpan Pengaturan</button>
+      </form>
+    </div>
+
+    <!-- TAB REKAP -->
+    <div id="tabRekap" class="tabPanel hidden pb-10">
+      <h2 class="mb-4 font-display text-lg font-semibold" style="color:var(--ijo-tua)">Rekap Absensi Terbaru</h2>
+      <div id="rekapWrap"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p></div>
+      <p class="mt-4 text-center font-mono text-xs" style="color:var(--tinta-lembut)">Data lengkap tersedia langsung di Google Sheets.</p>
+    </div>
+
+  </div>
+</div>
+
+<script src="assets/face-api.min.js"></script>
+<script src="assets/app.js"></script>
+<script>
+const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
+let DESCRIPTOR_BARU = null;
+let STREAM_ADMIN = null;
+let HARI_AKTIF_STATE = [1,2,3,4,5];
+
+if (TOKEN) tampilkanDashboard();
+
+document.getElementById("formLogin").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("btnLogin");
+  const err = document.getElementById("errorLogin");
+  err.classList.add("hidden");
+  btn.disabled = true; btn.textContent = "Memeriksa…";
+  try {
+    const res = await api.login(document.getElementById("inputPassword").value);
+    TOKEN = res.token;
+    sessionStorage.setItem(KUNCI_TOKEN, TOKEN);
+    tampilkanDashboard();
+  } catch (e2) {
+    err.textContent = e2.message || "Kata sandi salah.";
+    err.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = "Masuk";
+  }
+});
+
+function logout() {
+  sessionStorage.removeItem(KUNCI_TOKEN);
+  TOKEN = null;
+  document.getElementById("viewDashboard").classList.add("hidden");
+  document.getElementById("viewLogin").classList.remove("hidden");
+}
+
+function tampilkanDashboard() {
+  document.getElementById("viewLogin").classList.add("hidden");
+  document.getElementById("viewDashboard").classList.remove("hidden");
+  gantiTab("pegawai");
+  muatDaftarPegawai();
+}
+
+function gantiTab(nama) {
+  document.querySelectorAll(".tabPanel").forEach(p => p.classList.add("hidden"));
+  document.getElementById("tab" + nama.charAt(0).toUpperCase() + nama.slice(1)).classList.remove("hidden");
+  document.querySelectorAll(".tabBtn").forEach(b => {
+    const aktif = b.dataset.tab === nama;
+    b.style.background = aktif ? "var(--ijo-tua)" : "transparent";
+    b.style.color = aktif ? "var(--kertas)" : "var(--tinta-lembut)";
+  });
+  if (nama === "pengaturan") muatPengaturan();
+  if (nama === "rekap") muatRekap();
+}
+
+/* ---------------- TAB PEGAWAI ---------------- */
+
+async function muatDaftarPegawai() {
+  const wrap = document.getElementById("daftarPegawai");
+  try {
+    const res = await api.getPegawaiAdmin(TOKEN);
+    document.getElementById("jumlahPegawai").textContent = `(${res.pegawaiList.length})`;
+    if (res.pegawaiList.length === 0) {
+      wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data pegawai.</p>';
+      return;
+    }
+    wrap.innerHTML = res.pegawaiList.map(p => `
+      <div class="flex items-center justify-between rounded-xl px-4 py-3" style="border:1px solid var(--kertas-gelap); background:white">
+        <div>
+          <p class="font-medium">${escapeHtml(p.nama)}</p>
+          <p class="font-mono text-xs" style="color:var(--tinta-lembut)">${escapeHtml(p.jabatan || "—")} · ${escapeHtml(p.nip || "tanpa NIP")}</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="h-2.5 w-2.5 rounded-full" style="background:${p.punyaWajah ? "var(--ijo)" : "var(--merah-jaga)"}" title="${p.punyaWajah ? "Wajah terdaftar" : "Belum ada wajah"}"></span>
+          <button onclick="hapusPegawai('${p.id}')" class="font-mono text-xs underline" style="color:var(--merah-jaga)">Hapus</button>
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    const el = document.getElementById("errorPegawai");
+    el.textContent = err.message; el.classList.remove("hidden");
+  }
+}
+
+async function hapusPegawai(id) {
+  if (!confirm("Hapus data pegawai ini? Wajah terdaftar juga akan dihapus.")) return;
+  await api.hapusPegawai(id, TOKEN);
+  muatDaftarPegawai();
+}
+
+function bukaFormPegawai() {
+  document.getElementById("formPegawai").classList.remove("hidden");
+  document.getElementById("formPegawai").classList.add("flex");
+}
+function tutupFormPegawai() {
+  document.getElementById("formPegawai").classList.add("hidden");
+  document.getElementById("formPegawai").classList.remove("flex");
+  matikanKamera(STREAM_ADMIN);
+  document.getElementById("kameraAdminWrap").classList.add("hidden");
+  document.getElementById("wajahTersimpanInfo").classList.add("hidden");
+  DESCRIPTOR_BARU = null;
+  document.getElementById("formPegawai").reset();
+}
+
+async function bukaKameraAdmin() {
+  document.getElementById("wajahTersimpanInfo").classList.add("hidden");
+  document.getElementById("kameraAdminWrap").classList.remove("hidden");
+  document.getElementById("kameraAdminWrap").classList.add("flex");
+  try {
+    await muatModelWajah();
+    STREAM_ADMIN = await nyalakanKamera(document.getElementById("videoAdmin"));
+  } catch (err) {
+    const el = document.getElementById("errorFormPegawai");
+    el.textContent = "Kamera tidak dapat diakses. " + err.message;
+    el.classList.remove("hidden");
+  }
+}
+
+async function rekamWajahAdmin() {
+  const video = document.getElementById("videoAdmin");
+  const hasil = await deteksiSatuWajah(video);
+  const err = document.getElementById("errorFormPegawai");
+  if (!hasil) {
+    err.textContent = "Wajah belum terdeteksi. Pastikan pencahayaan cukup dan coba lagi.";
+    err.classList.remove("hidden");
+    return;
+  }
+  err.classList.add("hidden");
+  DESCRIPTOR_BARU = Array.from(hasil.descriptor);
+  matikanKamera(STREAM_ADMIN);
+  document.getElementById("kameraAdminWrap").classList.add("hidden");
+  document.getElementById("wajahTersimpanInfo").classList.remove("hidden");
+  document.getElementById("wajahTersimpanInfo").classList.add("flex");
+}
+
+document.getElementById("formPegawai").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("errorFormPegawai");
+  err.classList.add("hidden");
+  if (!DESCRIPTOR_BARU) {
+    err.textContent = "Ambil foto wajah pegawai terlebih dahulu.";
+    err.classList.remove("hidden");
+    return;
+  }
+  const btn = document.getElementById("btnSimpanPegawai");
+  btn.disabled = true; btn.textContent = "Menyimpan…";
+  try {
+    await api.tambahPegawai({
+      nama: document.getElementById("inputNama").value,
+      nip: document.getElementById("inputNip").value,
+      jabatan: document.getElementById("inputJabatan").value,
+      descriptor: DESCRIPTOR_BARU,
+    }, TOKEN);
+    tutupFormPegawai();
+    muatDaftarPegawai();
+  } catch (err2) {
+    err.textContent = err2.message;
+    err.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = "Simpan Pegawai";
+  }
+});
+
+/* ---------------- TAB PENGATURAN ---------------- */
+
+async function muatPengaturan() {
+  const res = await api.getConfig();
+  const cfg = res.config;
+  document.getElementById("cfgNamaKantor").value = cfg.namaKantor || "";
+  document.getElementById("cfgLat").value = cfg.lat ?? "";
+  document.getElementById("cfgLon").value = cfg.lon ?? "";
+  document.getElementById("cfgRadius").value = cfg.radiusMeter ?? 30;
+  document.getElementById("cfgJamBuka").value = cfg.jamBuka || "07:00";
+  document.getElementById("cfgJamTutup").value = cfg.jamTutup || "16:00";
+  HARI_AKTIF_STATE = cfg.hariAktif || [1,2,3,4,5];
+  renderHariKerja();
+}
+
+function renderHariKerja() {
+  const wrap = document.getElementById("hariKerjaWrap");
+  wrap.innerHTML = HARI_LABEL.map((label, i) => `
+    <button type="button" onclick="toggleHari(${i})" class="rounded-full px-4 py-2 text-sm"
+      style="${HARI_AKTIF_STATE.includes(i)
+        ? "background:var(--ijo-tua); color:var(--kertas)"
+        : "border:1px solid var(--kertas-gelap); color:var(--tinta-lembut)"}">
+      ${label}
+    </button>
+  `).join("");
+}
+
+function toggleHari(i) {
+  HARI_AKTIF_STATE = HARI_AKTIF_STATE.includes(i)
+    ? HARI_AKTIF_STATE.filter(h => h !== i)
+    : [...HARI_AKTIF_STATE, i].sort();
+  renderHariKerja();
+}
+
+function pakaiLokasiSaatIni() {
+  navigator.geolocation.getCurrentPosition((pos) => {
+    document.getElementById("cfgLat").value = pos.coords.latitude;
+    document.getElementById("cfgLon").value = pos.coords.longitude;
+  });
+}
+
+document.getElementById("formPengaturan").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("btnSimpanPengaturan");
+  const err = document.getElementById("errorPengaturan");
+  err.classList.add("hidden");
+  btn.disabled = true; btn.textContent = "Menyimpan…";
+  try {
+    await api.updateConfig({
+      namaKantor: document.getElementById("cfgNamaKantor").value,
+      lat: parseFloat(document.getElementById("cfgLat").value),
+      lon: parseFloat(document.getElementById("cfgLon").value),
+      radiusMeter: parseInt(document.getElementById("cfgRadius").value, 10),
+      jamBuka: document.getElementById("cfgJamBuka").value,
+      jamTutup: document.getElementById("cfgJamTutup").value,
+      hariAktif: HARI_AKTIF_STATE,
+    }, TOKEN);
+    btn.textContent = "✓ Tersimpan";
+    setTimeout(() => { btn.textContent = "Simpan Pengaturan"; }, 2500);
+  } catch (err2) {
+    err.textContent = err2.message;
+    err.classList.remove("hidden");
+    btn.textContent = "Simpan Pengaturan";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ---------------- TAB REKAP ---------------- */
+
+async function muatRekap() {
+  const wrap = document.getElementById("rekapWrap");
+  try {
+    const res = await api.getRekapAbsen(TOKEN, {});
+    if (res.rekap.length === 0) {
+      wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data absensi.</p>';
+      return;
+    }
+    wrap.innerHTML = `
+      <div class="overflow-x-auto rounded-xl" style="border:1px solid var(--kertas-gelap); background:white">
+        <table class="w-full text-left text-sm">
+          <thead class="font-mono text-xs uppercase tracking-wide" style="background:rgba(232,225,206,.5)">
+            <tr><th class="px-3 py-2">Tanggal</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jenis</th><th class="px-3 py-2">Jam</th><th class="px-3 py-2">Jarak</th></tr>
+          </thead>
+          <tbody>
+            ${res.rekap.map(r => `
+              <tr style="border-top:1px solid var(--kertas-gelap)">
+                <td class="px-3 py-2 font-mono">${escapeHtml(r.tanggal)}</td>
+                <td class="px-3 py-2">${escapeHtml(r.nama)}</td>
+                <td class="px-3 py-2 capitalize">${escapeHtml(r.jenis)}</td>
+                <td class="px-3 py-2 font-mono">${escapeHtml(r.jam)}</td>
+                <td class="px-3 py-2 font-mono">${r.jarakMeter}m</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (err) {
+    wrap.innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str ?? "";
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>
