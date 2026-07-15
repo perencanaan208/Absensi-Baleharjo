@@ -74,6 +74,16 @@ body {
 button { font-family: inherit; cursor: pointer; }
 input, select { font-family: inherit; }
 
+/* Perbaikan penting untuk mobile: input/select/textarea punya lebar minimum
+   bawaan browser (min-content) yang membuatnya "meluber" keluar kontainer
+   flex/grid sempit, misalnya baris NIP + Jabatan berdampingan. min-width:0
+   memaksa elemen ikut menyusut mengikuti sisa ruang yang tersedia. */
+input, select, textarea {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .kamera-bingkai {
   position: relative;
   width: 100%;
