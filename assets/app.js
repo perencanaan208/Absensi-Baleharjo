@@ -3,9 +3,9 @@
    Semua logic aplikasi ada di sini. Tidak perlu build tool apapun.
    ========================================================================= */
 
-// >>> GANTI BARIS DI BAWAH INI dengan URL Web App Google Apps Script Anda <<<
-// Lihat README.md bagian "Setup Google Sheets" untuk cara mendapatkannya.
-const SCRIPT_URL = "TEMPEL_URL_GOOGLE_APPS_SCRIPT_DI_SINI";
+// URL Web App Google Apps Script sudah tertanam di sini — tidak perlu diedit lagi
+// kecuali Anda membuat deployment Apps Script yang benar-benar baru.
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyK1o7ISJO9AtB-Mou5B6IB3psGZ7CGnuTJofB_rdeHYB83wQIVjnBbFUoDvYcbYvRV7Q/exec";
 
 const KUNCI_TOKEN = "absensi_baleharjo_admin_token";
 const AMBANG_KECOCOKAN = 0.5; // ambang jarak descriptor wajah (semakin kecil semakin ketat)
@@ -13,7 +13,7 @@ const AMBANG_KECOCOKAN = 0.5; // ambang jarak descriptor wajah (semakin kecil se
 /* ------------------------- Komunikasi ke Apps Script ------------------------- */
 
 async function panggilAPI(action, payload = {}, token) {
-  if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbyK1o7ISJO9AtB-Mou5B6IB3psGZ7CGnuTJofB_rdeHYB83wQIVjnBbFUoDvYcbYvRV7Q/exec")) {
+  if (!SCRIPT_URL || SCRIPT_URL.includes("TEMPEL_URL")) {
     throw new Error(
       "SCRIPT_URL belum diisi. Buka assets/app.js, ganti baris SCRIPT_URL dengan URL Google Apps Script Anda."
     );
