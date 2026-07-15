@@ -63,12 +63,16 @@
 
       <!-- form tambah pegawai -->
       <form id="formPegawai" class="hidden mb-6 flex-col gap-3 rounded-2xl p-5" style="border:1px solid var(--kertas-gelap); background:white">
-        <h3 class="font-display text-base font-semibold" style="color:var(--ijo-tua)">Pegawai Baru</h3>
+        <h3 id="judulFormPegawai" class="font-display text-base font-semibold" style="color:var(--ijo-tua)">Pegawai Baru</h3>
         <input required id="inputNama" placeholder="Nama lengkap" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
         <div class="flex gap-2">
           <input id="inputNip" placeholder="NIP (opsional)" class="flex-1 rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
           <input id="inputJabatan" placeholder="Jabatan" class="flex-1 rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
         </div>
+
+        <p id="catatanEditWajah" class="hidden text-xs italic" style="color:var(--tinta-lembut)">
+          Wajah lama tetap dipakai. Ambil/upload foto baru di bawah ini hanya jika ingin menggantinya.
+        </p>
 
         <div id="pilihanMetodeWajah" class="grid grid-cols-2 gap-2">
           <button type="button" id="btnBukaKamera" onclick="bukaKameraAdmin()" class="rounded-lg border-2 border-dashed px-3 py-3 text-sm" style="border-color:var(--ijo); color:var(--ijo)">
@@ -218,10 +222,13 @@ function gantiTab(nama) {
 
 /* ---------------- TAB PEGAWAI ---------------- */
 
+let DAFTAR_PEGAWAI_STATE = [];
+
 async function muatDaftarPegawai() {
   const wrap = document.getElementById("daftarPegawai");
   try {
     const res = await api.getPegawaiAdmin(TOKEN);
+    DAFTAR_PEGAWAI_STATE = res.pegawaiList;
     document.getElementById("jumlahPegawai").textContent = `(${res.pegawaiList.length})`;
     if (res.pegawaiList.length === 0) {
       wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data pegawai.</p>';
@@ -235,6 +242,7 @@ async function muatDaftarPegawai() {
         </div>
         <div class="flex items-center gap-3">
           <span class="h-2.5 w-2.5 rounded-full" style="background:${p.punyaWajah ? "var(--ijo)" : "var(--merah-jaga)"}" title="${p.punyaWajah ? "Wajah terdaftar" : "Belum ada wajah"}"></span>
+          <button onclick="bukaFormEditPegawai('${p.id}')" class="font-mono text-xs underline" style="color:var(--ijo)">Edit</button>
           <button onclick="hapusPegawai('${p.id}')" class="font-mono text-xs underline" style="color:var(--merah-jaga)">Hapus</button>
         </div>
       </div>
@@ -251,9 +259,33 @@ async function hapusPegawai(id) {
   muatDaftarPegawai();
 }
 
+let MODE_FORM = "tambah"; // "tambah" | "edit"
+let EDIT_ID = null;
+
 function bukaFormPegawai() {
+  MODE_FORM = "tambah";
+  EDIT_ID = null;
+  document.getElementById("judulFormPegawai").textContent = "Pegawai Baru";
+  document.getElementById("btnSimpanPegawai").textContent = "Simpan Pegawai";
+  document.getElementById("catatanEditWajah").classList.add("hidden");
   document.getElementById("formPegawai").classList.remove("hidden");
   document.getElementById("formPegawai").classList.add("flex");
+}
+
+function bukaFormEditPegawai(id) {
+  const p = DAFTAR_PEGAWAI_STATE.find(x => x.id === id);
+  if (!p) return;
+  MODE_FORM = "edit";
+  EDIT_ID = id;
+  document.getElementById("judulFormPegawai").textContent = "Edit Data Pegawai";
+  document.getElementById("btnSimpanPegawai").textContent = "Simpan Perubahan";
+  document.getElementById("inputNama").value = p.nama || "";
+  document.getElementById("inputNip").value = p.nip || "";
+  document.getElementById("inputJabatan").value = p.jabatan || "";
+  document.getElementById("catatanEditWajah").classList.remove("hidden");
+  document.getElementById("formPegawai").classList.remove("hidden");
+  document.getElementById("formPegawai").classList.add("flex");
+  document.getElementById("formPegawai").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function tutupFormPegawai() {
   document.getElementById("formPegawai").classList.add("hidden");
@@ -265,6 +297,8 @@ function tutupFormPegawai() {
   document.getElementById("pilihanMetodeWajah").classList.remove("hidden");
   document.getElementById("previewWajah").classList.add("hidden");
   DESCRIPTOR_BARU = null;
+  MODE_FORM = "tambah";
+  EDIT_ID = null;
   document.getElementById("formPegawai").reset();
 }
 
@@ -392,27 +426,39 @@ document.getElementById("formPegawai").addEventListener("submit", async (e) => {
   e.preventDefault();
   const err = document.getElementById("errorFormPegawai");
   err.classList.add("hidden");
-  if (!DESCRIPTOR_BARU) {
+
+  // Saat mode "tambah", foto wajah wajib. Saat mode "edit", opsional
+  // (kalau tidak diganti, wajah lama tetap dipakai — lihat ubahPegawai di Code.gs).
+  if (MODE_FORM === "tambah" && !DESCRIPTOR_BARU) {
     err.textContent = "Ambil foto wajah pegawai terlebih dahulu.";
     err.classList.remove("hidden");
     return;
   }
+
   const btn = document.getElementById("btnSimpanPegawai");
+  const teksAsli = btn.textContent;
   btn.disabled = true; btn.textContent = "Menyimpan…";
   try {
-    await api.tambahPegawai({
+    const data = {
       nama: document.getElementById("inputNama").value,
       nip: document.getElementById("inputNip").value,
       jabatan: document.getElementById("inputJabatan").value,
-      descriptor: DESCRIPTOR_BARU,
-    }, TOKEN);
+    };
+    if (DESCRIPTOR_BARU) data.descriptor = DESCRIPTOR_BARU;
+
+    if (MODE_FORM === "edit") {
+      data.id = EDIT_ID;
+      await api.ubahPegawai(data, TOKEN);
+    } else {
+      await api.tambahPegawai(data, TOKEN);
+    }
     tutupFormPegawai();
     muatDaftarPegawai();
   } catch (err2) {
     err.textContent = err2.message;
     err.classList.remove("hidden");
   } finally {
-    btn.disabled = false; btn.textContent = "Simpan Pegawai";
+    btn.disabled = false; btn.textContent = teksAsli;
   }
 });
 
