@@ -70,9 +70,18 @@
           <input id="inputJabatan" placeholder="Jabatan" class="flex-1 rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
         </div>
 
-        <button type="button" id="btnBukaKamera" onclick="bukaKameraAdmin()" class="rounded-lg border-2 border-dashed px-4 py-3 text-sm" style="border-color:var(--ijo); color:var(--ijo)">
-          Ambil Foto Wajah
-        </button>
+        <div id="pilihanMetodeWajah" class="grid grid-cols-2 gap-2">
+          <button type="button" id="btnBukaKamera" onclick="bukaKameraAdmin()" class="rounded-lg border-2 border-dashed px-3 py-3 text-sm" style="border-color:var(--ijo); color:var(--ijo)">
+            📷 Ambil Foto Kamera
+          </button>
+          <button type="button" id="btnUploadFoto" onclick="pilihFileFoto()" class="rounded-lg border-2 border-dashed px-3 py-3 text-sm" style="border-color:var(--ijo); color:var(--ijo)">
+            🖼️ Upload Foto
+          </button>
+        </div>
+        <input type="file" id="inputFotoUpload" accept="image/*" class="hidden" onchange="prosesUploadFoto(event)">
+        <p class="text-xs italic" style="color:var(--tinta-lembut)">
+          Upload foto hanya dipakai saat mendaftarkan pegawai. Saat pegawai absen nanti, sistem tetap wajib memverifikasi wajah langsung lewat kamera (bukan foto), supaya tidak bisa dicurangi.
+        </p>
 
         <div id="kameraAdminWrap" class="hidden flex-col items-center gap-3">
           <div id="kameraAdminBingkai" class="kamera-bingkai">
@@ -82,9 +91,15 @@
           <button type="button" onclick="rekamWajahAdmin()" class="rounded-lg px-4 py-2 text-sm font-medium text-[var(--kertas)]" style="background:var(--ijo-tua)">Rekam Wajah Ini</button>
         </div>
 
-        <div id="wajahTersimpanInfo" class="hidden items-center justify-between rounded-lg px-3 py-2 text-sm" style="background:rgba(44,107,78,.1); color:var(--ijo-tua)">
-          <span>✓ Wajah berhasil direkam</span>
-          <button type="button" onclick="bukaKameraAdmin()" class="underline">Ulangi</button>
+        <div id="statusUploadFoto" class="hidden flex-col items-center gap-2 text-sm" style="color:var(--tinta-lembut)">
+          <div class="spinner" style="border-color:rgba(23,53,42,.2); border-top-color:var(--ijo)"></div>
+          <p>Memeriksa wajah pada foto…</p>
+        </div>
+
+        <div id="wajahTersimpanInfo" class="hidden items-center gap-3 rounded-lg px-3 py-2 text-sm" style="background:rgba(44,107,78,.1); color:var(--ijo-tua)">
+          <img id="previewWajah" class="hidden h-12 w-12 rounded-full object-cover" style="border:2px solid var(--ijo)">
+          <span class="flex-1">✓ Wajah berhasil direkam</span>
+          <button type="button" onclick="ulangiAmbilWajah()" class="underline shrink-0">Ulangi</button>
         </div>
 
         <p id="errorFormPegawai" class="text-sm hidden" style="color:var(--merah-jaga)"></p>
@@ -245,12 +260,23 @@ function tutupFormPegawai() {
   document.getElementById("formPegawai").classList.remove("flex");
   matikanKamera(STREAM_ADMIN);
   document.getElementById("kameraAdminWrap").classList.add("hidden");
+  document.getElementById("statusUploadFoto").classList.add("hidden");
   document.getElementById("wajahTersimpanInfo").classList.add("hidden");
+  document.getElementById("pilihanMetodeWajah").classList.remove("hidden");
+  document.getElementById("previewWajah").classList.add("hidden");
   DESCRIPTOR_BARU = null;
   document.getElementById("formPegawai").reset();
 }
 
+function ulangiAmbilWajah() {
+  document.getElementById("wajahTersimpanInfo").classList.add("hidden");
+  document.getElementById("pilihanMetodeWajah").classList.remove("hidden");
+  document.getElementById("previewWajah").classList.add("hidden");
+  DESCRIPTOR_BARU = null;
+}
+
 async function bukaKameraAdmin() {
+  document.getElementById("pilihanMetodeWajah").classList.add("hidden");
   document.getElementById("wajahTersimpanInfo").classList.add("hidden");
   document.getElementById("kameraAdminWrap").classList.remove("hidden");
   document.getElementById("kameraAdminWrap").classList.add("flex");
@@ -275,10 +301,91 @@ async function rekamWajahAdmin() {
   }
   err.classList.add("hidden");
   DESCRIPTOR_BARU = Array.from(hasil.descriptor);
+
+  // Ambil cuplikan gambar dari video untuk pratinjau
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.translate(canvas.width, 0); ctx.scale(-1, 1); // sesuai video yang di-mirror
+  ctx.drawImage(video, 0, 0);
+  const preview = document.getElementById("previewWajah");
+  preview.src = canvas.toDataURL("image/jpeg", 0.85);
+  preview.classList.remove("hidden");
+
   matikanKamera(STREAM_ADMIN);
   document.getElementById("kameraAdminWrap").classList.add("hidden");
   document.getElementById("wajahTersimpanInfo").classList.remove("hidden");
   document.getElementById("wajahTersimpanInfo").classList.add("flex");
+}
+
+/* ---- Upload foto sebagai alternatif kamera (khusus saat mendaftarkan pegawai) ---- */
+
+function pilihFileFoto() {
+  document.getElementById("inputFotoUpload").click();
+}
+
+async function prosesUploadFoto(event) {
+  const file = event.target.files?.[0];
+  event.target.value = ""; // reset supaya bisa pilih file yang sama lagi kalau perlu
+  if (!file) return;
+
+  const err = document.getElementById("errorFormPegawai");
+  err.classList.add("hidden");
+
+  if (!file.type.startsWith("image/")) {
+    err.textContent = "File yang dipilih bukan gambar. Pilih file foto (JPG/PNG).";
+    err.classList.remove("hidden");
+    return;
+  }
+
+  document.getElementById("pilihanMetodeWajah").classList.add("hidden");
+  document.getElementById("statusUploadFoto").classList.remove("hidden");
+  document.getElementById("statusUploadFoto").classList.add("flex");
+
+  try {
+    await muatModelWajah();
+
+    const urlGambar = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = urlGambar;
+    await img.decode();
+
+    const hasil = await deteksiSatuWajah(img);
+    URL.revokeObjectURL(urlGambar);
+
+    document.getElementById("statusUploadFoto").classList.add("hidden");
+    document.getElementById("statusUploadFoto").classList.remove("flex");
+
+    if (!hasil) {
+      err.textContent = "Wajah tidak terdeteksi pada foto ini. Gunakan foto close-up wajah, jelas, pencahayaan cukup, dan hanya berisi 1 wajah.";
+      err.classList.remove("hidden");
+      document.getElementById("pilihanMetodeWajah").classList.remove("hidden");
+      return;
+    }
+
+    DESCRIPTOR_BARU = Array.from(hasil.descriptor);
+    const preview = document.getElementById("previewWajah");
+    preview.src = img.src.startsWith("blob:") ? await blobUrlToDataUrl(file) : img.src;
+    preview.classList.remove("hidden");
+
+    document.getElementById("wajahTersimpanInfo").classList.remove("hidden");
+    document.getElementById("wajahTersimpanInfo").classList.add("flex");
+  } catch (e) {
+    document.getElementById("statusUploadFoto").classList.add("hidden");
+    document.getElementById("statusUploadFoto").classList.remove("flex");
+    document.getElementById("pilihanMetodeWajah").classList.remove("hidden");
+    err.textContent = "Gagal memproses foto: " + e.message;
+    err.classList.remove("hidden");
+  }
+}
+
+function blobUrlToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 document.getElementById("formPegawai").addEventListener("submit", async (e) => {
