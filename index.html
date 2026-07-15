@@ -59,7 +59,7 @@
     <div class="stempel h-16 w-16" style="border-color:var(--merah-jaga); color:var(--merah-jaga)"><span class="text-xl">✕</span></div>
     <h2 class="font-display text-xl font-semibold" style="color:var(--ijo-tua)">Absensi Belum/Tidak Dibuka</h2>
     <p id="pesanTutup" class="text-sm" style="color:var(--tinta-lembut)"></p>
-    <p id="jamLayananTeks" class="font-mono text-xs" style="color:var(--tinta-lembut)"></p>
+    <div id="jamLayananWrap" class="flex flex-col gap-0.5"></div>
   </div>
 
   <!-- STATE: pilih jenis -->
@@ -146,8 +146,10 @@ const KONFIG_DEFAULT = {
   namaKantor: "Kantor Desa Baleharjo",
   lat: -8.0326, lon: 112.7361,
   radiusMeter: 30,
-  hariAktif: [1,2,3,4,5],
-  jamBuka: "07:00", jamTutup: "16:00",
+  jadwal: [
+    { label: "Senin - Kamis", hari: [1,2,3,4], jamBuka: "07:00", jamTutup: "16:00" },
+    { label: "Jumat", hari: [5], jamBuka: "07:00", jamTutup: "11:00" },
+  ],
 };
 
 function tampilkan(id) {
@@ -193,8 +195,8 @@ async function init() {
     tampilkan("statePilihJenis");
   } else {
     document.getElementById("pesanTutup").textContent = st.pesan;
-    document.getElementById("jamLayananTeks").textContent =
-      `Jam layanan: ${CONFIG.jamBuka}–${CONFIG.jamTutup} WIB`;
+    document.getElementById("jamLayananWrap").innerHTML = ringkasanJadwal(CONFIG)
+      .map(t => `<p class="font-mono text-xs" style="color:var(--tinta-lembut)">${t}</p>`).join("");
     tampilkan("stateTutup");
   }
 }
@@ -335,6 +337,8 @@ function kembaliAwal() {
   if (st.buka) tampilkan("statePilihJenis");
   else {
     document.getElementById("pesanTutup").textContent = st.pesan;
+    document.getElementById("jamLayananWrap").innerHTML = ringkasanJadwal(CONFIG)
+      .map(t => `<p class="font-mono text-xs" style="color:var(--tinta-lembut)">${t}</p>`).join("");
     tampilkan("stateTutup");
   }
 }
