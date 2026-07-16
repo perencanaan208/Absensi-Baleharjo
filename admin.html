@@ -177,7 +177,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=9"></script>
+<script src="assets/app.js?v=10"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -669,8 +669,14 @@ document.getElementById("formPengaturan").addEventListener("submit", async (e) =
 /* ---------------- TAB REKAP ---------------- */
 
 let REKAP_STATE = [];
+let CONFIG_REKAP_STATE = null;
 const LABEL_JENIS = { masuk: "Masuk", pulang: "Pulang", ijin: "Ijin" };
 const LABEL_ALASAN_IJIN = { sakit: "Sakit", dinas_luar: "Dinas Luar", lainnya: "Lainnya" };
+
+function cariJabatan(pegawaiId) {
+  const p = DAFTAR_PEGAWAI_STATE.find(x => x.id === pegawaiId);
+  return p && p.jabatan ? p.jabatan : "-";
+}
 
 function keteranganWaktuBaris(r, config) {
   if (r.jenis !== "masuk" && r.jenis !== "pulang") return "";
@@ -690,12 +696,33 @@ function keteranganWaktuBaris(r, config) {
   return `<span style="color:var(--ijo)">✓ Tepat waktu</span>`;
 }
 
+// Versi teks polos (tanpa HTML/warna) dari keteranganWaktuBaris, dipakai
+// untuk laporan cetak supaya tetap rapi saat di-print/PDF hitam-putih.
+function keteranganWaktuTeks(r, config) {
+  if (r.jenis !== "masuk" && r.jenis !== "pulang") return "-";
+  if (!config || !r.jam || !r.tanggal) return "-";
+  const [jam, menit] = r.jam.split(":").map(Number);
+  if (isNaN(jam) || isNaN(menit)) return "-";
+
+  const hariIndex = new Date(r.tanggal + "T00:00:00").getDay();
+  const kelompok = cariKelompokJadwal(config, hariIndex);
+  if (!kelompok) return "-";
+  const ket = hitungKeteranganWaktu(kelompok, r.jenis, { jam, menit });
+  if (!ket) return "-";
+
+  if (ket.tipe === "terlambat") return `Terlambat ${ket.menit} menit`;
+  if (ket.tipe === "mendahului") return `Mendahului ${ket.menit} menit`;
+  if (ket.tipe === "lewat") return `${ket.menit} menit setelah jam pulang`;
+  return "Tepat waktu";
+}
+
 async function muatRekap() {
   const wrap = document.getElementById("rekapWrap");
   try {
     const [resRekap, resConfig] = await Promise.all([api.getRekapAbsen(TOKEN, {}), api.getConfig()]);
     REKAP_STATE = resRekap.rekap;
     const config = resConfig.config;
+    CONFIG_REKAP_STATE = config;
 
     if (REKAP_STATE.length === 0) {
       wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data absensi.</p>';
@@ -706,7 +733,7 @@ async function muatRekap() {
         <table class="w-full text-left text-sm">
           <thead class="font-mono text-xs uppercase tracking-wide" style="background:rgba(232,225,206,.5)">
             <tr>
-              <th class="px-3 py-2">Tanggal</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jenis</th>
+              <th class="px-3 py-2">Tanggal</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jabatan</th><th class="px-3 py-2">Jenis</th>
               <th class="px-3 py-2">Jam</th><th class="px-3 py-2">Jarak / Keterangan</th>
               <th class="px-3 py-2">Ketepatan Waktu</th><th class="px-3 py-2">Aksi</th>
             </tr>
@@ -716,6 +743,7 @@ async function muatRekap() {
               <tr style="border-top:1px solid var(--kertas-gelap)">
                 <td class="px-3 py-2 font-mono">${escapeHtml(r.tanggal)}</td>
                 <td class="px-3 py-2">${escapeHtml(r.nama)}</td>
+                <td class="px-3 py-2 font-mono text-xs">${escapeHtml(cariJabatan(r.pegawaiId))}</td>
                 <td class="px-3 py-2">
                   <span class="rounded-full px-2 py-0.5 text-xs" style="${
                     r.jenis === "ijin" ? "background:rgba(201,154,59,.2); color:var(--ijo-tua)" :
@@ -764,12 +792,14 @@ function cetakLaporan() {
       <td>${escapeHtml(r.tanggal)}</td>
       <td>${escapeHtml(r.jam)}</td>
       <td>${escapeHtml(r.nama)}</td>
+      <td>${escapeHtml(cariJabatan(r.pegawaiId))}</td>
       <td>${escapeHtml(LABEL_JENIS[r.jenis] || r.jenis)}</td>
       <td>${
         r.jenis === "ijin"
           ? escapeHtml(LABEL_ALASAN_IJIN[r.alasan] || r.alasan || "-") + (r.keterangan ? ": " + escapeHtml(r.keterangan) : "")
           : (r.jarakMeter != null && r.jarakMeter !== "" ? r.jarakMeter + " m" : "-")
       }</td>
+      <td>${escapeHtml(keteranganWaktuTeks(r, CONFIG_REKAP_STATE))}</td>
     </tr>
   `).join("");
 
@@ -795,7 +825,7 @@ function cetakLaporan() {
       <h1>Laporan Absensi — Pemerintah Desa Baleharjo</h1>
       <p class="sub">Dicetak pada ${new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })} · Total ${REKAP_STATE.length} data (200 terbaru)</p>
       <table>
-        <thead><tr><th>Tanggal</th><th>Jam</th><th>Nama</th><th>Jenis</th><th>Jarak / Keterangan</th></tr></thead>
+        <thead><tr><th>Tanggal</th><th>Jam</th><th>Nama</th><th>Jabatan</th><th>Jenis</th><th>Jarak / Keterangan</th><th>Ketepatan Waktu</th></tr></thead>
         <tbody>${baris}</tbody>
       </table>
     </body>
