@@ -165,9 +165,12 @@
 
     <!-- TAB REKAP -->
     <div id="tabRekap" class="tabPanel hidden pb-10">
-      <h2 class="mb-4 font-display text-lg font-semibold" style="color:var(--ijo-tua)">Rekap Absensi Terbaru</h2>
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Rekap Absensi Terbaru</h2>
+        <button onclick="cetakLaporan()" class="rounded-full px-4 py-2 text-sm font-semibold" style="background:var(--ijo-tua); color:var(--kertas)">🖨️ Cetak Laporan</button>
+      </div>
       <div id="rekapWrap"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p></div>
-      <p class="mt-4 text-center font-mono text-xs" style="color:var(--tinta-lembut)">Data lengkap tersedia langsung di Google Sheets.</p>
+      <p class="mt-4 text-center font-mono text-xs" style="color:var(--tinta-lembut)">Data lengkap tersedia langsung di Google Sheets. Tabel di atas menampilkan 200 data terbaru.</p>
     </div>
 
   </div>
@@ -665,24 +668,51 @@ document.getElementById("formPengaturan").addEventListener("submit", async (e) =
 
 /* ---------------- TAB REKAP ---------------- */
 
+let REKAP_STATE = [];
+const LABEL_JENIS = { masuk: "Masuk", pulang: "Pulang", ijin: "Ijin" };
+const LABEL_ALASAN_IJIN = { sakit: "Sakit", dinas_luar: "Dinas Luar", lainnya: "Lainnya" };
+
+function keteranganWaktuBaris(r, config) {
+  if (r.jenis !== "masuk" && r.jenis !== "pulang") return "";
+  if (!config || !r.jam || !r.tanggal) return "";
+  const [jam, menit] = r.jam.split(":").map(Number);
+  if (isNaN(jam) || isNaN(menit)) return "";
+
+  const hariIndex = new Date(r.tanggal + "T00:00:00").getDay();
+  const kelompok = cariKelompokJadwal(config, hariIndex);
+  if (!kelompok) return "";
+  const ket = hitungKeteranganWaktu(kelompok, r.jenis, { jam, menit });
+  if (!ket) return "";
+
+  if (ket.tipe === "terlambat") return `<span style="color:var(--merah-jaga)">⏰ Terlambat ${ket.menit}m</span>`;
+  if (ket.tipe === "mendahului") return `<span style="color:var(--nila)">⏱ Awal ${ket.menit}m</span>`;
+  if (ket.tipe === "lewat") return `<span style="color:var(--tinta-lembut)">${ket.menit}m setelah jam pulang</span>`;
+  return `<span style="color:var(--ijo)">✓ Tepat waktu</span>`;
+}
+
 async function muatRekap() {
   const wrap = document.getElementById("rekapWrap");
   try {
-    const res = await api.getRekapAbsen(TOKEN, {});
-    if (res.rekap.length === 0) {
+    const [resRekap, resConfig] = await Promise.all([api.getRekapAbsen(TOKEN, {}), api.getConfig()]);
+    REKAP_STATE = resRekap.rekap;
+    const config = resConfig.config;
+
+    if (REKAP_STATE.length === 0) {
       wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data absensi.</p>';
       return;
     }
-    const labelJenis = { masuk: "Masuk", pulang: "Pulang", ijin: "Ijin" };
-    const labelAlasan = { sakit: "Sakit", dinas_luar: "Dinas Luar", lainnya: "Lainnya" };
     wrap.innerHTML = `
       <div class="overflow-x-auto rounded-xl" style="border:1px solid var(--kertas-gelap); background:white">
         <table class="w-full text-left text-sm">
           <thead class="font-mono text-xs uppercase tracking-wide" style="background:rgba(232,225,206,.5)">
-            <tr><th class="px-3 py-2">Tanggal</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jenis</th><th class="px-3 py-2">Jam</th><th class="px-3 py-2">Jarak / Keterangan</th></tr>
+            <tr>
+              <th class="px-3 py-2">Tanggal</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jenis</th>
+              <th class="px-3 py-2">Jam</th><th class="px-3 py-2">Jarak / Keterangan</th>
+              <th class="px-3 py-2">Ketepatan Waktu</th><th class="px-3 py-2">Aksi</th>
+            </tr>
           </thead>
           <tbody>
-            ${res.rekap.map(r => `
+            ${REKAP_STATE.map(r => `
               <tr style="border-top:1px solid var(--kertas-gelap)">
                 <td class="px-3 py-2 font-mono">${escapeHtml(r.tanggal)}</td>
                 <td class="px-3 py-2">${escapeHtml(r.nama)}</td>
@@ -691,14 +721,18 @@ async function muatRekap() {
                     r.jenis === "ijin" ? "background:rgba(201,154,59,.2); color:var(--ijo-tua)" :
                     r.jenis === "masuk" ? "background:rgba(44,107,78,.15); color:var(--ijo-tua)" :
                     "background:rgba(38,52,73,.12); color:var(--nila)"
-                  }">${labelJenis[r.jenis] || escapeHtml(r.jenis)}</span>
+                  }">${LABEL_JENIS[r.jenis] || escapeHtml(r.jenis)}</span>
                 </td>
                 <td class="px-3 py-2 font-mono">${escapeHtml(r.jam)}</td>
                 <td class="px-3 py-2 font-mono text-xs">${
                   r.jenis === "ijin"
-                    ? escapeHtml(labelAlasan[r.alasan] || r.alasan || "-") + (r.keterangan ? `: ${escapeHtml(r.keterangan)}` : "")
+                    ? escapeHtml(LABEL_ALASAN_IJIN[r.alasan] || r.alasan || "-") + (r.keterangan ? `: ${escapeHtml(r.keterangan)}` : "")
                     : `${r.jarakMeter}m`
                 }</td>
+                <td class="px-3 py-2 text-xs">${keteranganWaktuBaris(r, config)}</td>
+                <td class="px-3 py-2">
+                  <button onclick="resetAbsen('${r.id}')" class="font-mono text-xs underline" style="color:var(--merah-jaga)">Reset</button>
+                </td>
               </tr>
             `).join("")}
           </tbody>
@@ -707,6 +741,67 @@ async function muatRekap() {
   } catch (err) {
     wrap.innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">${escapeHtml(err.message)}</p>`;
   }
+}
+
+async function resetAbsen(id) {
+  if (!confirm("Hapus/reset data absen ini? Pegawai akan bisa absen ulang untuk jenis yang sama pada hari itu.")) return;
+  try {
+    await api.hapusAbsen(id, TOKEN);
+    muatRekap();
+  } catch (err) {
+    alert("Gagal menghapus: " + err.message);
+  }
+}
+
+function cetakLaporan() {
+  if (!REKAP_STATE || REKAP_STATE.length === 0) {
+    alert("Tidak ada data absensi untuk dicetak.");
+    return;
+  }
+  const win = window.open("", "_blank");
+  const baris = REKAP_STATE.slice().reverse().map(r => `
+    <tr>
+      <td>${escapeHtml(r.tanggal)}</td>
+      <td>${escapeHtml(r.jam)}</td>
+      <td>${escapeHtml(r.nama)}</td>
+      <td>${escapeHtml(LABEL_JENIS[r.jenis] || r.jenis)}</td>
+      <td>${
+        r.jenis === "ijin"
+          ? escapeHtml(LABEL_ALASAN_IJIN[r.alasan] || r.alasan || "-") + (r.keterangan ? ": " + escapeHtml(r.keterangan) : "")
+          : (r.jarakMeter != null && r.jarakMeter !== "" ? r.jarakMeter + " m" : "-")
+      }</td>
+    </tr>
+  `).join("");
+
+  win.document.write(`
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+      <meta charset="UTF-8">
+      <title>Laporan Absensi — Pemerintah Desa Baleharjo</title>
+      <style>
+        body { font-family: Georgia, 'Times New Roman', serif; padding: 32px; color: #1B231D; }
+        h1 { font-size: 20px; margin-bottom: 2px; }
+        p.sub { font-size: 12px; color: #555; margin-top: 0; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
+        th { background: #eee; }
+        .tombolCetak { margin-bottom: 20px; padding: 10px 18px; font-size: 14px; cursor: pointer; }
+        @media print { .tombolCetak { display: none; } }
+      </style>
+    </head>
+    <body>
+      <button class="tombolCetak" onclick="window.print()">🖨️ Cetak / Simpan sebagai PDF</button>
+      <h1>Laporan Absensi — Pemerintah Desa Baleharjo</h1>
+      <p class="sub">Dicetak pada ${new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })} · Total ${REKAP_STATE.length} data (200 terbaru)</p>
+      <table>
+        <thead><tr><th>Tanggal</th><th>Jam</th><th>Nama</th><th>Jenis</th><th>Jarak / Keterangan</th></tr></thead>
+        <tbody>${baris}</tbody>
+      </table>
+    </body>
+    </html>
+  `);
+  win.document.close();
 }
 
 function escapeHtml(str) {
