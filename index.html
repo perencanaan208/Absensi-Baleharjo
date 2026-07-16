@@ -154,6 +154,7 @@
       </div>
       <p id="pesanSukses" class="text-center font-display text-xl" style="color:var(--ijo-tua)"></p>
       <p id="catatanWaktuSukses" class="hidden rounded-full px-3 py-1 text-center text-xs font-medium"></p>
+      <div id="recapHarianSukses" class="mt-1 flex w-full flex-col gap-1 rounded-xl px-4 py-3 text-xs" style="background:rgba(255,255,255,.6); border:1px solid var(--kertas-gelap); color:var(--tinta-lembut)"></div>
     </div>
     <button onclick="kembaliAwal()" class="rounded-2xl border-2 px-6 py-3 font-medium" style="border-color:var(--ijo-tua); color:var(--ijo-tua)">Selesai</button>
   </div>
@@ -411,6 +412,44 @@ async function verifikasiWajah() {
       return;
     }
 
+    // Ambil status absen hari ini SEBELUM mencatat, untuk beri pesan yang
+    // jelas kalau urutannya tidak valid (mis. pulang sebelum masuk, atau
+    // sudah ijin tapi coba absen). Validasi utama tetap dilakukan di server.
+    let statusHariIni = { masuk: null, pulang: null, ijin: null };
+    try {
+      const resStatus = await api.getStatusHariIni(cocok.pegawai.id);
+      statusHariIni = resStatus.status;
+    } catch (e) {
+      // Kalau gagal ambil status (mis. koneksi), tetap lanjut — server akan
+      // tetap menolak kalau memang tidak valid.
+    }
+
+    if (statusHariIni.ijin && (JENIS === "masuk" || JENIS === "pulang")) {
+      matikanKamera(STREAM);
+      tampilkanGagal("Tidak bisa absen", `Anda sudah mengajukan ijin hari ini (${labelAlasanIjin(statusHariIni.ijin.alasan)}), tidak bisa absen ${JENIS === "masuk" ? "masuk" : "pulang"}.`, () => kembaliAwal());
+      return;
+    }
+    if (JENIS === "ijin" && (statusHariIni.masuk || statusHariIni.pulang || statusHariIni.ijin)) {
+      matikanKamera(STREAM);
+      tampilkanGagal("Tidak bisa mengajukan ijin", "Anda sudah tercatat hadir/ijin hari ini.", () => kembaliAwal());
+      return;
+    }
+    if (JENIS === "masuk" && statusHariIni.masuk) {
+      matikanKamera(STREAM);
+      tampilkanGagal("Sudah absen masuk", `Anda sudah absen masuk hari ini pukul ${statusHariIni.masuk.jam}.`, () => kembaliAwal());
+      return;
+    }
+    if (JENIS === "pulang" && !statusHariIni.masuk) {
+      matikanKamera(STREAM);
+      tampilkanGagal("Belum absen masuk", "Anda belum absen masuk hari ini. Tidak bisa absen pulang sebelum absen masuk.", () => kembaliAwal());
+      return;
+    }
+    if (JENIS === "pulang" && statusHariIni.pulang) {
+      matikanKamera(STREAM);
+      tampilkanGagal("Sudah absen pulang", `Anda sudah absen pulang hari ini pukul ${statusHariIni.pulang.jam}.`, () => kembaliAwal());
+      return;
+    }
+
     if (JENIS === "ijin") {
       await api.catatAbsen({
         pegawaiId: cocok.pegawai.id,
@@ -463,6 +502,25 @@ async function verifikasiWajah() {
     stempel.classList.remove("animasi-stempel");
     void stempel.offsetWidth;
     stempel.classList.add("animasi-stempel");
+
+    // Gabungkan status sebelum absen dengan hasil absen barusan, lalu
+    // tampilkan sebagai ringkasan status harian di kartu sukses.
+    const statusSesudah = {
+      masuk: statusHariIni.masuk,
+      pulang: statusHariIni.pulang,
+      ijin: statusHariIni.ijin,
+    };
+    if (JENIS === "masuk") statusSesudah.masuk = { jam: waktuSkrg.jamMenitTeks };
+    if (JENIS === "pulang") statusSesudah.pulang = { jam: waktuSkrg.jamMenitTeks };
+    if (JENIS === "ijin") statusSesudah.ijin = { jam: waktuSkrg.jamMenitTeks, alasan: ALASAN_IJIN };
+
+    document.getElementById("recapHarianSukses").innerHTML = `
+      <p class="font-mono uppercase tracking-wide" style="letter-spacing:.05em">Status Hari Ini</p>
+      <p>${statusSesudah.masuk ? "✅ Absen Masuk — " + statusSesudah.masuk.jam : "⏳ Absen Masuk — belum"}</p>
+      <p>${statusSesudah.pulang ? "✅ Absen Pulang — " + statusSesudah.pulang.jam : "⏳ Absen Pulang — belum"}</p>
+      ${statusSesudah.ijin ? `<p>📋 Ijin ${labelAlasanIjin(statusSesudah.ijin.alasan)} — ${statusSesudah.ijin.jam}</p>` : ""}
+    `;
+
     tampilkan("stateSukses");
   } catch (err) {
     matikanKamera(STREAM);
