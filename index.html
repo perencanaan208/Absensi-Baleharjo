@@ -60,6 +60,9 @@
     <h2 class="font-display text-xl font-semibold" style="color:var(--ijo-tua)">Absensi Belum/Tidak Dibuka</h2>
     <p id="pesanTutup" class="text-sm" style="color:var(--tinta-lembut)"></p>
     <div id="jamLayananWrap" class="flex flex-col gap-0.5"></div>
+    <button onclick="mulaiIjin()" class="mt-2 rounded-xl px-5 py-3 text-sm font-medium" style="border:2px dashed var(--emas-padi); color:var(--ijo-tua)">
+      Ajukan Ijin (Sakit / Dinas Luar / Lainnya)
+    </button>
   </div>
 
   <!-- STATE: pilih jenis -->
@@ -75,6 +78,34 @@
       Absen Pulang
       <span class="mt-1 block font-mono text-xs font-normal text-white/60">Akhir jam kerja</span>
     </button>
+    <button onclick="mulaiIjin()" class="rounded-2xl px-6 py-4 text-left font-display text-lg font-semibold transition active:scale-[0.98]" style="border:2px dashed var(--emas-padi); color:var(--ijo-tua)">
+      Ajukan Ijin
+      <span class="mt-1 block font-mono text-xs font-normal" style="color:var(--tinta-lembut)">Sakit / Dinas Luar / Lainnya — tanpa perlu di kantor</span>
+    </button>
+  </div>
+
+  <!-- STATE: form ijin -->
+  <div id="stateIjin" class="hidden flex-col gap-4">
+    <p class="text-center text-sm" style="color:var(--tinta-lembut)">
+      Ijin tidak perlu berada di kantor, namun tetap wajib verifikasi wajah.
+    </p>
+    <div class="flex flex-col gap-2">
+      <label class="font-mono text-xs uppercase tracking-wide" style="color:var(--tinta-lembut)">Alasan Ijin</label>
+      <div class="grid grid-cols-3 gap-2">
+        <button type="button" data-alasan="sakit" onclick="pilihAlasanIjin('sakit')" class="alasanBtn rounded-xl py-3 text-sm font-medium" style="border:1px solid var(--kertas-gelap); background:white; color:var(--tinta-lembut)">Sakit</button>
+        <button type="button" data-alasan="dinas_luar" onclick="pilihAlasanIjin('dinas_luar')" class="alasanBtn rounded-xl py-3 text-sm font-medium" style="border:1px solid var(--kertas-gelap); background:white; color:var(--tinta-lembut)">Dinas Luar</button>
+        <button type="button" data-alasan="lainnya" onclick="pilihAlasanIjin('lainnya')" class="alasanBtn rounded-xl py-3 text-sm font-medium" style="border:1px solid var(--kertas-gelap); background:white; color:var(--tinta-lembut)">Lainnya</button>
+      </div>
+    </div>
+    <div id="wrapKeteranganIjin" class="hidden flex-col gap-1">
+      <label class="font-mono text-xs uppercase tracking-wide" style="color:var(--tinta-lembut)">Keterangan</label>
+      <textarea id="inputKeteranganIjin" rows="3" placeholder="Tuliskan alasan ijin Anda..." class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)"></textarea>
+    </div>
+    <p id="errorIjin" class="text-sm hidden" style="color:var(--merah-jaga)"></p>
+    <button onclick="lanjutVerifikasiIjin()" class="rounded-2xl px-6 py-4 font-display text-lg font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98]" style="background:var(--ijo-tua)">
+      Lanjut ke Verifikasi Wajah
+    </button>
+    <button onclick="kembaliAwal()" class="text-sm underline" style="color:var(--tinta-lembut)">Batal</button>
   </div>
 
   <!-- STATE: memuat generik -->
@@ -88,6 +119,7 @@
     <div class="stempel h-14 w-14" style="border-color:var(--merah-jaga); color:var(--merah-jaga)"><span class="text-lg">!</span></div>
     <h2 id="judulGagal" class="font-display text-lg font-semibold" style="color:var(--merah-jaga)"></h2>
     <p id="pesanGagal" class="text-sm" style="color:var(--tinta-lembut)"></p>
+    <p id="detailGagal" class="hidden font-mono text-xs" style="color:var(--tinta-lembut)"></p>
     <div class="mt-2 flex w-full gap-3">
       <button onclick="kembaliAwal()" class="flex-1 rounded-xl px-4 py-3 text-sm" style="border:1px solid rgba(75,86,77,.4); color:var(--tinta-lembut)">Kembali</button>
       <button id="btnCobaLagi" class="flex-1 rounded-xl px-4 py-3 text-sm font-medium text-[var(--kertas)]" style="background:var(--ijo-tua)">Coba Lagi</button>
@@ -121,6 +153,7 @@
         <span id="jamStempel" class="font-mono text-xs"></span>
       </div>
       <p id="pesanSukses" class="text-center font-display text-xl" style="color:var(--ijo-tua)"></p>
+      <p id="catatanWaktuSukses" class="hidden rounded-full px-3 py-1 text-center text-xs font-medium"></p>
     </div>
     <button onclick="kembaliAwal()" class="rounded-2xl border-2 px-6 py-3 font-medium" style="border-color:var(--ijo-tua); color:var(--ijo-tua)">Selesai</button>
   </div>
@@ -141,11 +174,14 @@ let LOKASI = null;
 let JARAK = null;
 let STREAM = null;
 let LOOP_DETEKSI = false;
+let ALASAN_IJIN = null;
+let KETERANGAN_IJIN = "";
 
 const KONFIG_DEFAULT = {
   namaKantor: "Kantor Desa Baleharjo",
   lat: -8.0326, lon: 112.7361,
   radiusMeter: 30,
+  toleransiMenit: 60,
   jadwal: [
     { label: "Senin - Kamis", hari: [1,2,3,4], jamBuka: "07:00", jamTutup: "16:00" },
     { label: "Jumat", hari: [5], jamBuka: "07:00", jamTutup: "11:00" },
@@ -153,7 +189,7 @@ const KONFIG_DEFAULT = {
 };
 
 function tampilkan(id) {
-  ["stateMemuatAwal","stateTutup","statePilihJenis","stateMemuat","stateGagal","stateWajah","stateSukses"]
+  ["stateMemuatAwal","stateTutup","statePilihJenis","stateIjin","stateMemuat","stateGagal","stateWajah","stateSukses"]
     .forEach(s => document.getElementById(s).classList.add("hidden"));
   const el = document.getElementById(id);
   el.classList.remove("hidden");
@@ -210,17 +246,38 @@ async function mulaiCekLokasi(jenisAbsen) {
   tampilkan("stateMemuat");
   try {
     const loc = await ambilLokasiSaatIni();
-    const d = hitungJarakMeter(loc.lat, loc.lon, CONFIG.lat, CONFIG.lon);
-    LOKASI = loc; JARAK = d;
-    if (d <= (CONFIG.radiusMeter || 30)) {
-      mulaiKamera();
-    } else {
+    LOKASI = loc;
+
+    if (CONFIG.lat == null || CONFIG.lon == null || isNaN(CONFIG.lat) || isNaN(CONFIG.lon)) {
       tampilkanGagal(
-        "Lokasi di luar jangkauan kantor",
-        `Jarak Anda ${Math.round(d)} meter dari kantor. Absen hanya berlaku dalam radius ${CONFIG.radiusMeter} meter.`,
+        "Koordinat kantor belum diatur",
+        "Admin belum mengatur koordinat kantor di Panel Admin → Jadwal & Lokasi. Hubungi admin untuk mengaturnya terlebih dahulu.",
         () => mulaiCekLokasi(JENIS)
       );
+      return;
     }
+
+    const d = hitungJarakMeter(loc.lat, loc.lon, CONFIG.lat, CONFIG.lon);
+    JARAK = d;
+
+    if (d <= (CONFIG.radiusMeter || 30)) {
+      mulaiKamera();
+      return;
+    }
+
+    // Jarak sangat ekstrem (>1000km) hampir selalu berarti koordinat kantor
+    // di pengaturan admin salah/belum sesuai, bukan pegawai yang jauh dari kantor.
+    const kemungkinanSalahKonfig = d > 1000000;
+    tampilkanGagal(
+      "Lokasi di luar jangkauan kantor",
+      kemungkinanSalahKonfig
+        ? `Jarak terhitung ${Math.round(d).toLocaleString("id-ID")} meter — ini tidak wajar dan kemungkinan besar koordinat kantor di Panel Admin belum diatur dengan benar. Mohon informasikan ke admin untuk mengecek ulang di menu Jadwal & Lokasi.`
+        : `Jarak Anda ${Math.round(d)} meter dari kantor. Absen hanya berlaku dalam radius ${CONFIG.radiusMeter} meter.`,
+      () => mulaiCekLokasi(JENIS)
+    );
+    document.getElementById("detailGagal").textContent =
+      `Lokasi Anda: ${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)} (akurasi ±${Math.round(loc.akurasi)}m) · Koordinat kantor: ${CONFIG.lat}, ${CONFIG.lon}`;
+    document.getElementById("detailGagal").classList.remove("hidden");
   } catch (err) {
     tampilkanGagal(
       "Lokasi di luar jangkauan kantor",
@@ -233,13 +290,65 @@ async function mulaiCekLokasi(jenisAbsen) {
 function tampilkanGagal(judul, pesan, aksiCobaLagi) {
   document.getElementById("judulGagal").textContent = judul;
   document.getElementById("pesanGagal").textContent = pesan;
+  document.getElementById("detailGagal").classList.add("hidden");
   const btn = document.getElementById("btnCobaLagi");
   btn.onclick = aksiCobaLagi;
   tampilkan("stateGagal");
 }
 
+/* ============================ Alur Ijin ============================ */
+
+function mulaiIjin() {
+  JENIS = "ijin";
+  ALASAN_IJIN = null;
+  KETERANGAN_IJIN = "";
+  document.getElementById("inputKeteranganIjin").value = "";
+  document.getElementById("wrapKeteranganIjin").classList.add("hidden");
+  document.getElementById("errorIjin").classList.add("hidden");
+  document.querySelectorAll(".alasanBtn").forEach(b => {
+    b.style.background = "white"; b.style.color = "var(--tinta-lembut)"; b.style.border = "1px solid var(--kertas-gelap)";
+  });
+  tampilkan("stateIjin");
+}
+
+function pilihAlasanIjin(kode) {
+  ALASAN_IJIN = kode;
+  document.querySelectorAll(".alasanBtn").forEach(b => {
+    const aktif = b.dataset.alasan === kode;
+    b.style.background = aktif ? "var(--ijo-tua)" : "white";
+    b.style.color = aktif ? "var(--kertas)" : "var(--tinta-lembut)";
+    b.style.border = aktif ? "1px solid var(--ijo-tua)" : "1px solid var(--kertas-gelap)";
+  });
+  document.getElementById("wrapKeteranganIjin").classList.toggle("hidden", kode !== "lainnya");
+  if (kode === "lainnya") document.getElementById("wrapKeteranganIjin").classList.add("flex");
+}
+
+function lanjutVerifikasiIjin() {
+  const err = document.getElementById("errorIjin");
+  err.classList.add("hidden");
+  if (!ALASAN_IJIN) {
+    err.textContent = "Pilih alasan ijin terlebih dahulu.";
+    err.classList.remove("hidden");
+    return;
+  }
+  const keterangan = document.getElementById("inputKeteranganIjin").value.trim();
+  if (ALASAN_IJIN === "lainnya" && !keterangan) {
+    err.textContent = "Isi keterangan alasan ijin.";
+    err.classList.remove("hidden");
+    return;
+  }
+  KETERANGAN_IJIN = keterangan;
+  LOKASI = null; JARAK = null;
+  mulaiKamera();
+}
+
+function labelAlasanIjin(kode) {
+  return kode === "sakit" ? "Sakit" : kode === "dinas_luar" ? "Dinas Luar" : "Lainnya";
+}
+
 async function mulaiKamera() {
-  document.getElementById("badgeJenis").textContent = JENIS === "masuk" ? "Absen Masuk" : "Absen Pulang";
+  document.getElementById("badgeJenis").textContent =
+    JENIS === "masuk" ? "Absen Masuk" : JENIS === "pulang" ? "Absen Pulang" : "Ajukan Ijin — " + labelAlasanIjin(ALASAN_IJIN);
   tampilkan("stateWajah");
   const bingkai = document.getElementById("kameraBingkai");
   const statusEl = document.getElementById("kameraStatus");
@@ -282,7 +391,7 @@ async function loopDeteksiWajah() {
 
 async function verifikasiWajah() {
   LOOP_DETEKSI = false;
-  document.getElementById("teksMemuat").textContent = "Mencocokkan wajah & mencatat absen…";
+  document.getElementById("teksMemuat").textContent = JENIS === "ijin" ? "Mencocokkan wajah & mencatat ijin…" : "Mencocokkan wajah & mencatat absen…";
   tampilkan("stateMemuat");
   try {
     const video = document.getElementById("video");
@@ -302,22 +411,55 @@ async function verifikasiWajah() {
       return;
     }
 
-    await api.catatAbsen({
-      pegawaiId: cocok.pegawai.id,
-      nama: cocok.pegawai.nama,
-      jenis: JENIS,
-      lat: LOKASI.lat, lon: LOKASI.lon,
-      jarakMeter: Math.round(JARAK),
-      skorKecocokan: Number(cocok.jarak.toFixed(3)),
-    });
+    if (JENIS === "ijin") {
+      await api.catatAbsen({
+        pegawaiId: cocok.pegawai.id,
+        nama: cocok.pegawai.nama,
+        jenis: "ijin",
+        alasan: ALASAN_IJIN,
+        keterangan: KETERANGAN_IJIN,
+        skorKecocokan: Number(cocok.jarak.toFixed(3)),
+      });
+    } else {
+      await api.catatAbsen({
+        pegawaiId: cocok.pegawai.id,
+        nama: cocok.pegawai.nama,
+        jenis: JENIS,
+        lat: LOKASI.lat, lon: LOKASI.lon,
+        jarakMeter: Math.round(JARAK),
+        skorKecocokan: Number(cocok.jarak.toFixed(3)),
+      });
+    }
 
     matikanKamera(STREAM);
-    const jamSkrg = waktuJakartaSaatIni().jamMenitTeks;
+    const waktuSkrg = waktuJakartaSaatIni();
     const stempel = document.getElementById("stempelSukses");
-    stempel.style.color = JENIS === "masuk" ? "var(--ijo)" : "var(--nila)";
-    document.getElementById("labelStempel").textContent = JENIS === "masuk" ? "HADIR MASUK" : "HADIR PULANG";
-    document.getElementById("jamStempel").textContent = jamSkrg;
-    document.getElementById("pesanSukses").textContent = `Selamat bertugas, ${cocok.pegawai.nama}`;
+    const catatanEl = document.getElementById("catatanWaktuSukses");
+
+    if (JENIS === "ijin") {
+      stempel.style.color = "var(--emas-padi)";
+      document.getElementById("labelStempel").textContent = "IJIN TERCATAT";
+      document.getElementById("pesanSukses").textContent = `Ijin ${labelAlasanIjin(ALASAN_IJIN)} untuk ${cocok.pegawai.nama} telah tercatat.`;
+      catatanEl.classList.add("hidden");
+    } else {
+      stempel.style.color = JENIS === "masuk" ? "var(--ijo)" : "var(--nila)";
+      document.getElementById("labelStempel").textContent = JENIS === "masuk" ? "HADIR MASUK" : "HADIR PULANG";
+      document.getElementById("pesanSukses").textContent = `Selamat bertugas, ${cocok.pegawai.nama}`;
+
+      const kelompok = cariKelompokJadwal(CONFIG, waktuSkrg.hariIndex);
+      const ket = kelompok ? hitungKeteranganWaktu(kelompok, JENIS, waktuSkrg) : null;
+      if (ket && ket.tipe !== "tepat") {
+        const ikon = ket.tipe === "terlambat" ? "⏰" : ket.tipe === "mendahului" ? "⏱" : "ℹ️";
+        catatanEl.textContent = `${ikon} ${ket.teks}`;
+        catatanEl.style.background = ket.tipe === "terlambat" ? "rgba(179,69,44,.12)" : "rgba(38,52,73,.1)";
+        catatanEl.style.color = ket.tipe === "terlambat" ? "var(--merah-jaga)" : "var(--nila)";
+        catatanEl.classList.remove("hidden");
+      } else {
+        catatanEl.classList.add("hidden");
+      }
+    }
+
+    document.getElementById("jamStempel").textContent = waktuSkrg.jamMenitTeks;
     stempel.classList.remove("animasi-stempel");
     void stempel.offsetWidth;
     stempel.classList.add("animasi-stempel");
@@ -331,7 +473,7 @@ async function verifikasiWajah() {
 function kembaliAwal() {
   LOOP_DETEKSI = false;
   matikanKamera(STREAM);
-  JENIS = null; LOKASI = null; JARAK = null;
+  JENIS = null; LOKASI = null; JARAK = null; ALASAN_IJIN = null; KETERANGAN_IJIN = "";
   const st = statusJadwal(CONFIG);
   updateBadge(st.buka);
   if (st.buka) tampilkan("statePilihJenis");
@@ -342,6 +484,7 @@ function kembaliAwal() {
     tampilkan("stateTutup");
   }
 }
+
 </script>
 </body>
 </html>
