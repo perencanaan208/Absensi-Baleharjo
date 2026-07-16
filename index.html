@@ -20,6 +20,9 @@
 <body class="min-h-screen">
 
 <header class="pola-kawung-terang relative overflow-hidden pb-10 pt-8 text-[var(--kertas)]" style="background:var(--ijo-tua)">
+  <button onclick="location.href='admin.html'" aria-label="Admin" title="" class="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center">
+    <span class="h-1.5 w-1.5 rounded-full" style="background:rgba(255,255,255,.3)"></span>
+  </button>
   <div class="mx-auto max-w-md px-5">
     <div class="flex items-center gap-3">
       <div class="h-14 w-14 shrink-0 overflow-hidden rounded-full" style="border:2.5px solid var(--emas-padi); background:white">
@@ -159,12 +162,8 @@
 
 </section>
 
-<footer class="mx-auto max-w-md px-5 pb-8 text-center">
-  <a href="admin.html" class="font-mono text-xs underline" style="color:rgba(75,86,77,.6)">Masuk sebagai admin</a>
-</footer>
-
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=12"></script>
+<script src="assets/app.js?v=13"></script>
 <script>
 /* ============================ State halaman ============================ */
 let CONFIG = null;
