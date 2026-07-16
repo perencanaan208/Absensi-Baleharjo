@@ -165,19 +165,23 @@
 
     <!-- TAB REKAP -->
     <div id="tabRekap" class="tabPanel hidden pb-10">
-      <div class="mb-4 flex items-center justify-between">
-        <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Rekap Absensi Terbaru</h2>
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Rekap Absensi</h2>
         <button onclick="cetakLaporan()" class="rounded-full px-4 py-2 text-sm font-semibold" style="background:var(--ijo-tua); color:var(--kertas)">🖨️ Cetak Laporan</button>
       </div>
+      <div class="mb-4 flex items-center gap-2">
+        <select id="filterBulan" onchange="muatRekap()" class="rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); background:white"></select>
+        <select id="filterTahun" onchange="muatRekap()" class="rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); background:white"></select>
+      </div>
       <div id="rekapWrap"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p></div>
-      <p class="mt-4 text-center font-mono text-xs" style="color:var(--tinta-lembut)">Data lengkap tersedia langsung di Google Sheets. Tabel di atas menampilkan 200 data terbaru.</p>
+      <p id="catatanRekap" class="mt-4 text-center font-mono text-xs" style="color:var(--tinta-lembut)"></p>
     </div>
 
   </div>
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=10"></script>
+<script src="assets/app.js?v=11"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -716,16 +720,46 @@ function keteranganWaktuTeks(r, config) {
   return "Tepat waktu";
 }
 
+const NAMA_BULAN = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+
+function inisialisasiFilterRekap() {
+  const selBulan = document.getElementById("filterBulan");
+  const selTahun = document.getElementById("filterTahun");
+  if (selBulan.dataset.terisi) return; // sudah pernah diisi, jangan reset pilihan user
+
+  const waktu = waktuJakartaSaatIni();
+  selBulan.innerHTML = NAMA_BULAN.map((nama, i) => `<option value="${i+1}">${nama}</option>`).join("");
+  selBulan.value = waktu.bulan;
+  selBulan.dataset.terisi = "1";
+
+  const tahunSekarang = waktu.tahun;
+  const daftarTahun = [];
+  for (let t = tahunSekarang; t >= tahunSekarang - 4; t--) daftarTahun.push(t);
+  selTahun.innerHTML = daftarTahun.map(t => `<option value="${t}">${t}</option>`).join("");
+  selTahun.value = tahunSekarang;
+}
+
 async function muatRekap() {
+  inisialisasiFilterRekap();
+  const bulan = parseInt(document.getElementById("filterBulan").value, 10);
+  const tahun = parseInt(document.getElementById("filterTahun").value, 10);
+
   const wrap = document.getElementById("rekapWrap");
+  wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p>';
   try {
-    const [resRekap, resConfig] = await Promise.all([api.getRekapAbsen(TOKEN, {}), api.getConfig()]);
+    const [resRekap, resConfig] = await Promise.all([
+      api.getRekapAbsen(TOKEN, { bulan, tahun }),
+      api.getConfig(),
+    ]);
     REKAP_STATE = resRekap.rekap;
     const config = resConfig.config;
     CONFIG_REKAP_STATE = config;
 
+    document.getElementById("catatanRekap").textContent =
+      `Menampilkan ${REKAP_STATE.length} data untuk ${NAMA_BULAN[bulan-1]} ${tahun}. Data lengkap tersedia langsung di Google Sheets.`;
+
     if (REKAP_STATE.length === 0) {
-      wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data absensi.</p>';
+      wrap.innerHTML = `<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data absensi pada ${NAMA_BULAN[bulan-1]} ${tahun}.</p>`;
       return;
     }
     wrap.innerHTML = `
@@ -823,7 +857,7 @@ function cetakLaporan() {
     <body>
       <button class="tombolCetak" onclick="window.print()">🖨️ Cetak / Simpan sebagai PDF</button>
       <h1>Laporan Absensi — Pemerintah Desa Baleharjo</h1>
-      <p class="sub">Dicetak pada ${new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })} · Total ${REKAP_STATE.length} data (200 terbaru)</p>
+      <p class="sub">Periode: ${NAMA_BULAN[parseInt(document.getElementById("filterBulan").value,10)-1]} ${document.getElementById("filterTahun").value} · Dicetak pada ${new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })} · Total ${REKAP_STATE.length} data</p>
       <table>
         <thead><tr><th>Tanggal</th><th>Jam</th><th>Nama</th><th>Jabatan</th><th>Jenis</th><th>Jarak / Keterangan</th><th>Ketepatan Waktu</th></tr></thead>
         <tbody>${baris}</tbody>
