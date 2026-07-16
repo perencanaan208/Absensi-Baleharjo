@@ -70,6 +70,13 @@ function ambilLokasiSaatIni() {
   });
 }
 
+// Perkiraan kotak wilayah Indonesia — dipakai untuk memperingatkan admin
+// kalau koordinat kantor yang disimpan tampak salah (mis. masih 0,0 atau
+// tertukar lat/lon), bukan untuk membatasi absen secara ketat.
+function koordinatDalamIndonesia(lat, lon) {
+  return lat >= -11.5 && lat <= 6.5 && lon >= 94 && lon <= 141.5;
+}
+
 /* -------------------------------- Jadwal -------------------------------- */
 
 const NAMA_HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
@@ -109,6 +116,18 @@ function ringkasanJadwal(config) {
   });
 }
 
+function formatMenit(totalMenit) {
+  const m = Math.max(0, Math.min(1439, Math.round(totalMenit)));
+  const j = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(j).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+// Jendela sistem absen sengaja dibuka lebih lebar dari jam operasional resmi
+// (default 60 menit sebelum & sesudah), supaya pegawai tetap bisa absen kalau
+// datang sedikit lebih awal/pulang sedikit lebih lambat. Status "mendahului"
+// atau "terlambat" tetap dihitung terhadap jam operasional resmi (lihat
+// hitungKeteranganWaktu), bukan terhadap jendela sistem ini.
 function statusJadwal(config) {
   const waktu = waktuJakartaSaatIni();
   const kelompok = cariKelompokJadwal(config, waktu.hariIndex);
@@ -122,20 +141,60 @@ function statusJadwal(config) {
     };
   }
 
+  const toleransi = config?.toleransiMenit ?? 60;
+  const [jamBukaJ, jamBukaM] = (kelompok.jamBuka ?? "07:00").split(":").map(Number);
+  const [jamTutupJ, jamTutupM] = (kelompok.jamTutup ?? "16:00").split(":").map(Number);
+  const menitSekarang = waktu.jam * 60 + waktu.menit;
+  const menitBukaResmi = jamBukaJ * 60 + jamBukaM;
+  const menitTutupResmi = jamTutupJ * 60 + jamTutupM;
+  const menitBukaSistem = menitBukaResmi - toleransi;
+  const menitTutupSistem = menitTutupResmi + toleransi;
+  const dalamJendela = menitSekarang >= menitBukaSistem && menitSekarang <= menitTutupSistem;
+
+  return {
+    buka: dalamJendela,
+    waktu,
+    kelompok,
+    toleransi,
+    pesan: dalamJendela
+      ? "Absensi sedang dibuka."
+      : `Absensi hari ${waktu.namaHari} (${kelompok.label || "hari ini"}) dibuka pukul ${formatMenit(menitBukaSistem)}–${formatMenit(menitTutupSistem)} WIB.`,
+  };
+}
+
+// Menghitung apakah absen masuk/pulang dilakukan mendahului atau terlambat
+// dari jam operasional RESMI (bukan jendela toleransi sistem).
+function hitungKeteranganWaktu(kelompok, jenis, waktu) {
+  if (!kelompok || (jenis !== "masuk" && jenis !== "pulang")) return null;
+
   const [jamBukaJ, jamBukaM] = (kelompok.jamBuka ?? "07:00").split(":").map(Number);
   const [jamTutupJ, jamTutupM] = (kelompok.jamTutup ?? "16:00").split(":").map(Number);
   const menitSekarang = waktu.jam * 60 + waktu.menit;
   const menitBuka = jamBukaJ * 60 + jamBukaM;
   const menitTutup = jamTutupJ * 60 + jamTutupM;
-  const dalamJamKerja = menitSekarang >= menitBuka && menitSekarang <= menitTutup;
-  return {
-    buka: dalamJamKerja,
-    waktu,
-    kelompok,
-    pesan: dalamJamKerja
-      ? "Absensi sedang dibuka."
-      : `Absensi hari ${waktu.namaHari} (${kelompok.label || "hari ini"}) dibuka pukul ${kelompok.jamBuka}–${kelompok.jamTutup} WIB.`,
-  };
+
+  if (jenis === "masuk") {
+    if (menitSekarang < menitBuka) {
+      const selisih = menitBuka - menitSekarang;
+      return { tipe: "mendahului", menit: selisih, teks: `Datang ${selisih} menit lebih awal dari jam masuk (${kelompok.jamBuka}).` };
+    }
+    if (menitSekarang > menitBuka) {
+      const selisih = menitSekarang - menitBuka;
+      return { tipe: "terlambat", menit: selisih, teks: `Terlambat ${selisih} menit dari jam masuk (${kelompok.jamBuka}).` };
+    }
+    return { tipe: "tepat", menit: 0, teks: "Tepat waktu." };
+  }
+
+  // jenis === "pulang"
+  if (menitSekarang < menitTutup) {
+    const selisih = menitTutup - menitSekarang;
+    return { tipe: "mendahului", menit: selisih, teks: `Pulang ${selisih} menit lebih awal dari jam pulang (${kelompok.jamTutup}).` };
+  }
+  if (menitSekarang > menitTutup) {
+    const selisih = menitSekarang - menitTutup;
+    return { tipe: "lewat", menit: selisih, teks: `Pulang ${selisih} menit setelah jam pulang usai (${kelompok.jamTutup}).` };
+  }
+  return { tipe: "tepat", menit: 0, teks: "Tepat waktu." };
 }
 
 /* -------------------------------- Wajah -------------------------------- */
