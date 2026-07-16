@@ -40,6 +40,7 @@ const api = {
   catatAbsen: (data) => panggilAPI("catatAbsen", { data }),
   getStatusHariIni: (pegawaiId) => panggilAPI("getStatusHariIni", { pegawaiId }),
   getRekapAbsen: (token, filter) => panggilAPI("getRekapAbsen", { filter }, token),
+  hapusAbsen: (id, token) => panggilAPI("hapusAbsen", { id }, token),
   login: (password) => panggilAPI("login", { password }),
 };
 
