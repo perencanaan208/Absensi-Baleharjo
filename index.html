@@ -60,9 +60,7 @@
     <h2 class="font-display text-xl font-semibold" style="color:var(--ijo-tua)">Absensi Belum/Tidak Dibuka</h2>
     <p id="pesanTutup" class="text-sm" style="color:var(--tinta-lembut)"></p>
     <div id="jamLayananWrap" class="flex flex-col gap-0.5"></div>
-    <button onclick="mulaiIjin()" class="mt-2 rounded-xl px-5 py-3 text-sm font-medium" style="border:2px dashed var(--emas-padi); color:var(--ijo-tua)">
-      Ajukan Ijin (Sakit / Dinas Luar / Lainnya)
-    </button>
+    <p class="mt-1 font-mono text-xs" style="color:var(--tinta-lembut)">Absen Masuk, Absen Pulang, dan Ajukan Ijin hanya tersedia pada jam layanan di atas.</p>
   </div>
 
   <!-- STATE: pilih jenis -->
@@ -166,7 +164,7 @@
 </footer>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=9"></script>
+<script src="assets/app.js?v=11"></script>
 <script>
 /* ============================ State halaman ============================ */
 let CONFIG = null;
@@ -300,6 +298,15 @@ function tampilkanGagal(judul, pesan, aksiCobaLagi) {
 /* ============================ Alur Ijin ============================ */
 
 function mulaiIjin() {
+  const st = statusJadwal(CONFIG);
+  if (!st.buka) {
+    updateBadge(false);
+    document.getElementById("pesanTutup").textContent = st.pesan;
+    document.getElementById("jamLayananWrap").innerHTML = ringkasanJadwal(CONFIG)
+      .map(t => `<p class="font-mono text-xs" style="color:var(--tinta-lembut)">${t}</p>`).join("");
+    tampilkan("stateTutup");
+    return;
+  }
   JENIS = "ijin";
   ALASAN_IJIN = null;
   KETERANGAN_IJIN = "";
