@@ -163,10 +163,11 @@
 </section>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=13"></script>
+<script src="assets/app.js?v=14"></script>
 <script>
 /* ============================ State halaman ============================ */
 let CONFIG = null;
+let LIBUR_LIST = [];
 let JENIS = null;
 let LOKASI = null;
 let JARAK = null;
@@ -223,8 +224,14 @@ async function init() {
     kotak.classList.remove("hidden");
     kotak.querySelector("p").textContent = "Belum tersambung ke server data. Menampilkan mode pratinjau. (" + err.message + ")";
   }
+  try {
+    const resLibur = await api.getLibur(waktuJakartaSaatIni().tahun);
+    LIBUR_LIST = resLibur.libur || [];
+  } catch (err) {
+    LIBUR_LIST = [];
+  }
   document.getElementById("namaInstansi").textContent = CONFIG.namaKantor || "Kantor Desa Baleharjo";
-  const st = statusJadwal(CONFIG);
+  const st = statusJadwal(CONFIG, cariLiburHariIni(LIBUR_LIST));
   updateBadge(st.buka);
   if (st.buka) {
     tampilkan("statePilihJenis");
@@ -298,7 +305,7 @@ function tampilkanGagal(judul, pesan, aksiCobaLagi) {
 /* ============================ Alur Ijin ============================ */
 
 function mulaiIjin() {
-  const st = statusJadwal(CONFIG);
+  const st = statusJadwal(CONFIG, cariLiburHariIni(LIBUR_LIST));
   if (!st.buka) {
     updateBadge(false);
     document.getElementById("pesanTutup").textContent = st.pesan;
@@ -539,7 +546,7 @@ function kembaliAwal() {
   LOOP_DETEKSI = false;
   matikanKamera(STREAM);
   JENIS = null; LOKASI = null; JARAK = null; ALASAN_IJIN = null; KETERANGAN_IJIN = "";
-  const st = statusJadwal(CONFIG);
+  const st = statusJadwal(CONFIG, cariLiburHariIni(LIBUR_LIST));
   updateBadge(st.buka);
   if (st.buka) tampilkan("statePilihJenis");
   else {
