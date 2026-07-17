@@ -48,6 +48,7 @@ const api = {
   hapusAbsen: (id, token) => panggilAPI("hapusAbsen", { id }, token),
   hapusAbsenBanyak: (idList, token) => panggilAPI("hapusAbsenBanyak", { idList }, token),
   login: (password) => panggilAPI("login", { password }),
+  gantiPasswordAdmin: (passwordLama, passwordBaru, token) => panggilAPI("gantiPasswordAdmin", { passwordLama, passwordBaru }, token),
 };
 
 /* ------------------------------- Geolokasi ------------------------------- */
