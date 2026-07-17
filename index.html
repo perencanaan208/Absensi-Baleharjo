@@ -43,6 +43,8 @@
         ○ Memuat…
       </span>
     </div>
+
+    <div id="ringkasanHariIni" class="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3" style="border-color:rgba(255,255,255,.12)"></div>
   </div>
 </header>
 
@@ -81,7 +83,7 @@
     </button>
     <button onclick="mulaiIjin()" class="rounded-2xl px-6 py-4 text-left font-display text-lg font-semibold transition active:scale-[0.98]" style="border:2px dashed var(--emas-padi); color:var(--ijo-tua)">
       Ajukan Ijin
-      <span class="mt-1 block font-mono text-xs font-normal" style="color:var(--tinta-lembut)">Sakit / Dinas Luar / Lainnya — tanpa perlu di kantor</span>
+      <span class="mt-1 block font-mono text-xs font-normal" style="color:var(--tinta-lembut)">Ijin tidak masuk kerja</span>
     </button>
   </div>
 
@@ -163,7 +165,7 @@
 </section>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=14"></script>
+<script src="assets/app.js?v=17"></script>
 <script>
 /* ============================ State halaman ============================ */
 let CONFIG = null;
@@ -214,6 +216,24 @@ function updateBadge(buka) {
   }
 }
 
+async function muatRingkasanHariIni() {
+  const wrap = document.getElementById("ringkasanHariIni");
+  try {
+    const res = await api.getRingkasanHariIni();
+    const r = res.ringkasan;
+    wrap.innerHTML = `
+      <span class="font-mono text-xs" style="color:var(--kertas)">✅ <b>${r.masuk}</b>/${r.totalPegawai} Masuk</span>
+      <span class="font-mono text-xs" style="color:var(--kertas)">🏠 <b>${r.pulang}</b>/${r.totalPegawai} Pulang</span>
+      <span class="font-mono text-xs" style="color:var(--kertas)">📋 <b>${r.ijin}</b> Ijin</span>
+    `;
+  } catch (err) {
+    wrap.innerHTML = "";
+  }
+}
+// Otomatis reset tiap hari karena selalu ambil data hari ini (WIB) — cukup
+// disegarkan berkala selama halaman terbuka, dan setiap ada absen baru.
+setInterval(muatRingkasanHariIni, 60000);
+
 async function init() {
   try {
     const res = await api.getConfig();
@@ -230,6 +250,7 @@ async function init() {
   } catch (err) {
     LIBUR_LIST = [];
   }
+  muatRingkasanHariIni();
   document.getElementById("namaInstansi").textContent = CONFIG.namaKantor || "Kantor Desa Baleharjo";
   const st = statusJadwal(CONFIG, cariLiburHariIni(LIBUR_LIST));
   updateBadge(st.buka);
@@ -535,6 +556,7 @@ async function verifikasiWajah() {
       ${statusSesudah.ijin ? `<p>📋 Ijin ${labelAlasanIjin(statusSesudah.ijin.alasan)} — ${statusSesudah.ijin.jam}</p>` : ""}
     `;
 
+    muatRingkasanHariIni();
     tampilkan("stateSukses");
   } catch (err) {
     matikanKamera(STREAM);
