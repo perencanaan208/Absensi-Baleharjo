@@ -34,6 +34,7 @@ const api = {
   updateConfig: (config, token) => panggilAPI("updateConfig", { config }, token),
   getLibur: (tahun) => panggilAPI("getLibur", { tahun }),
   tambahLibur: (data, token) => panggilAPI("tambahLibur", { data }, token),
+  tambahLiburBanyak: (dataList, token) => panggilAPI("tambahLiburBanyak", { dataList }, token),
   hapusLibur: (id, token) => panggilAPI("hapusLibur", { id }, token),
   getPegawaiUntukAbsen: () => panggilAPI("getPegawaiUntukAbsen"),
   getPegawaiAdmin: (token) => panggilAPI("getPegawaiAdmin", {}, token),
@@ -44,6 +45,7 @@ const api = {
   getStatusHariIni: (pegawaiId) => panggilAPI("getStatusHariIni", { pegawaiId }),
   getRekapAbsen: (token, filter) => panggilAPI("getRekapAbsen", { filter }, token),
   hapusAbsen: (id, token) => panggilAPI("hapusAbsen", { id }, token),
+  hapusAbsenBanyak: (idList, token) => panggilAPI("hapusAbsenBanyak", { idList }, token),
   login: (password) => panggilAPI("login", { password }),
 };
 
