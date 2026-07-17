@@ -32,6 +32,9 @@ async function panggilAPI(action, payload = {}, token) {
 const api = {
   getConfig: () => panggilAPI("getConfig"),
   updateConfig: (config, token) => panggilAPI("updateConfig", { config }, token),
+  getLibur: (tahun) => panggilAPI("getLibur", { tahun }),
+  tambahLibur: (data, token) => panggilAPI("tambahLibur", { data }, token),
+  hapusLibur: (id, token) => panggilAPI("hapusLibur", { id }, token),
   getPegawaiUntukAbsen: () => panggilAPI("getPegawaiUntukAbsen"),
   getPegawaiAdmin: (token) => panggilAPI("getPegawaiAdmin", {}, token),
   tambahPegawai: (pegawai, token) => panggilAPI("tambahPegawai", { pegawai }, token),
@@ -131,13 +134,39 @@ function formatMenit(totalMenit) {
   return `${String(j).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
+function tanggalISOJakartaSaatIni() {
+  const w = waktuJakartaSaatIni();
+  return `${w.tahun}-${String(w.bulan).padStart(2, "0")}-${String(w.tanggal).padStart(2, "0")}`;
+}
+
+function cariLiburHariIni(liburList) {
+  const tanggalHariIni = tanggalISOJakartaSaatIni();
+  return (liburList || []).find((l) => l.tanggal === tanggalHariIni) || null;
+}
+
 // Jendela sistem absen sengaja dibuka lebih lebar dari jam operasional resmi
 // (default 60 menit sebelum & sesudah), supaya pegawai tetap bisa absen kalau
 // datang sedikit lebih awal/pulang sedikit lebih lambat. Status "mendahului"
 // atau "terlambat" tetap dihitung terhadap jam operasional resmi (lihat
 // hitungKeteranganWaktu), bukan terhadap jendela sistem ini.
-function statusJadwal(config) {
+//
+// Parameter liburHariIni (opsional): objek {keterangan, jenis} kalau hari ini
+// terdaftar sebagai libur nasional/cuti bersama — kalau ada, absen otomatis
+// dianggap tutup apapun jadwal & toleransi jamnya.
+function statusJadwal(config, liburHariIni) {
   const waktu = waktuJakartaSaatIni();
+
+  if (liburHariIni) {
+    const labelJenis = liburHariIni.jenis === "cuti_bersama" ? "Cuti Bersama" : "Libur Nasional";
+    return {
+      buka: false,
+      waktu,
+      kelompok: null,
+      libur: true,
+      pesan: `Hari ini ${labelJenis}: ${liburHariIni.keterangan}. Absensi ditutup.`,
+    };
+  }
+
   const kelompok = cariKelompokJadwal(config, waktu.hariIndex);
 
   if (!kelompok) {
