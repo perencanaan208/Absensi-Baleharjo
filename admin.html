@@ -52,6 +52,7 @@
     <div class="mx-auto flex max-w-3xl gap-1 px-3 py-2">
       <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="pegawai" onclick="gantiTab('pegawai')">Data Pegawai</button>
       <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="pengaturan" onclick="gantiTab('pengaturan')">Jadwal &amp; Lokasi</button>
+      <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="libur" onclick="gantiTab('libur')">Hari Libur</button>
       <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="rekap" onclick="gantiTab('rekap')">Rekap Absensi</button>
     </div>
   </nav>
@@ -173,6 +174,36 @@
       </form>
     </div>
 
+    <!-- TAB LIBUR -->
+    <div id="tabLibur" class="tabPanel hidden pb-10">
+      <div class="mb-1 flex items-center justify-between">
+        <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Hari Libur &amp; Cuti Bersama</h2>
+      </div>
+      <p class="mb-4 text-xs italic" style="color:var(--tinta-lembut)">
+        Absen (Masuk/Pulang/Ijin) otomatis ditutup pada tanggal yang terdaftar di sini, apapun jadwal harian yang diatur.
+        Data awal sudah diisi dengan kalender resmi Libur Nasional &amp; Cuti Bersama 2026 (SKB 3 Menteri). Tambahkan tanggal baru setiap tahun berikutnya di sini.
+      </p>
+
+      <form id="formLibur" class="mb-6 flex flex-col gap-3 rounded-2xl p-5" style="border:1px solid var(--kertas-gelap); background:white">
+        <h3 class="font-display text-base font-semibold" style="color:var(--ijo-tua)">Tambah Tanggal Libur</h3>
+        <div class="grid grid-cols-2 gap-2">
+          <input type="date" id="inputTanggalLibur" required class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+          <select id="inputJenisLibur" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+            <option value="libur_nasional">Libur Nasional</option>
+            <option value="cuti_bersama">Cuti Bersama</option>
+          </select>
+        </div>
+        <input id="inputKeteranganLibur" required placeholder="Keterangan, mis. Hari Raya Idulfitri" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        <p id="errorLibur" class="text-sm hidden" style="color:var(--merah-jaga)"></p>
+        <button id="btnTambahLibur" class="rounded-lg py-2 text-sm font-semibold" style="background:var(--emas-padi); color:var(--ijo-tua)">+ Tambah ke Daftar</button>
+      </form>
+
+      <div class="mb-4 flex items-center gap-2">
+        <select id="filterTahunLibur" onchange="muatLibur()" class="rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); background:white"></select>
+      </div>
+      <div id="daftarLibur" class="flex flex-col gap-2"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p></div>
+    </div>
+
     <!-- TAB REKAP -->
     <div id="tabRekap" class="tabPanel hidden pb-10">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -191,7 +222,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=12"></script>
+<script src="assets/app.js?v=14"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -249,6 +280,7 @@ function gantiTab(nama) {
     b.style.color = aktif ? "var(--kertas)" : "var(--tinta-lembut)";
   });
   if (nama === "pengaturan") muatPengaturan();
+  if (nama === "libur") muatLibur();
   if (nama === "rekap") muatRekap();
 }
 
@@ -683,6 +715,97 @@ document.getElementById("formPengaturan").addEventListener("submit", async (e) =
     btn.textContent = "Simpan Pengaturan";
   } finally {
     btn.disabled = false;
+  }
+});
+
+/* ---------------- TAB LIBUR ---------------- */
+
+const LABEL_JENIS_LIBUR = { libur_nasional: "Libur Nasional", cuti_bersama: "Cuti Bersama" };
+let LIBUR_STATE = [];
+
+function inisialisasiFilterTahunLibur() {
+  const sel = document.getElementById("filterTahunLibur");
+  if (sel.dataset.terisi) return;
+  const tahunSekarang = waktuJakartaSaatIni().tahun;
+  const daftarTahun = [];
+  for (let t = tahunSekarang + 1; t >= tahunSekarang - 1; t--) daftarTahun.push(t);
+  sel.innerHTML = daftarTahun.map(t => `<option value="${t}">${t}</option>`).join("");
+  sel.value = tahunSekarang;
+  sel.dataset.terisi = "1";
+}
+
+async function muatLibur() {
+  inisialisasiFilterTahunLibur();
+  const tahun = parseInt(document.getElementById("filterTahunLibur").value, 10);
+  const wrap = document.getElementById("daftarLibur");
+  wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p>';
+  try {
+    const res = await api.getLibur(tahun);
+    LIBUR_STATE = res.libur;
+    if (LIBUR_STATE.length === 0) {
+      wrap.innerHTML = `<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada tanggal libur terdaftar untuk tahun ${tahun}.</p>`;
+      return;
+    }
+    wrap.innerHTML = LIBUR_STATE.map(l => `
+      <div class="flex items-center justify-between rounded-xl px-4 py-3" style="border:1px solid var(--kertas-gelap); background:white">
+        <div>
+          <p class="font-mono text-sm font-medium">${escapeHtml(l.tanggal)}</p>
+          <p class="text-sm" style="color:var(--tinta-lembut)">${escapeHtml(l.keterangan)}</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="rounded-full px-2 py-0.5 text-xs" style="${
+            l.jenis === "cuti_bersama" ? "background:rgba(38,52,73,.12); color:var(--nila)" : "background:rgba(44,107,78,.15); color:var(--ijo-tua)"
+          }">${LABEL_JENIS_LIBUR[l.jenis] || l.jenis}</span>
+          <button onclick="hapusLibur('${l.id}')" class="font-mono text-xs underline" style="color:var(--merah-jaga)">Hapus</button>
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    wrap.innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function hapusLibur(id) {
+  if (!confirm("Hapus tanggal libur ini? Absen akan kembali normal pada tanggal tersebut.")) return;
+  try {
+    await api.hapusLibur(id, TOKEN);
+    muatLibur();
+  } catch (err) {
+    alert("Gagal menghapus: " + err.message);
+  }
+}
+
+document.getElementById("formLibur").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("errorLibur");
+  err.classList.add("hidden");
+  const btn = document.getElementById("btnTambahLibur");
+  const tanggal = document.getElementById("inputTanggalLibur").value;
+  const keterangan = document.getElementById("inputKeteranganLibur").value.trim();
+  const jenis = document.getElementById("inputJenisLibur").value;
+
+  if (!tanggal || !keterangan) {
+    err.textContent = "Tanggal dan keterangan wajib diisi.";
+    err.classList.remove("hidden");
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = "Menyimpan…";
+  try {
+    await api.tambahLibur({ tanggal, keterangan, jenis }, TOKEN);
+    document.getElementById("formLibur").reset();
+    const tahunBaru = parseInt(tanggal.slice(0, 4), 10);
+    const selTahun = document.getElementById("filterTahunLibur");
+    if (![...selTahun.options].some(o => parseInt(o.value, 10) === tahunBaru)) {
+      selTahun.insertAdjacentHTML("beforeend", `<option value="${tahunBaru}">${tahunBaru}</option>`);
+    }
+    selTahun.value = tahunBaru;
+    muatLibur();
+  } catch (err2) {
+    err.textContent = err2.message;
+    err.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = "+ Tambah ke Daftar";
   }
 });
 
