@@ -43,6 +43,7 @@ const api = {
   hapusPegawai: (id, token) => panggilAPI("hapusPegawai", { id }, token),
   catatAbsen: (data) => panggilAPI("catatAbsen", { data }),
   getStatusHariIni: (pegawaiId) => panggilAPI("getStatusHariIni", { pegawaiId }),
+  getRingkasanHariIni: () => panggilAPI("getRingkasanHariIni"),
   getRekapAbsen: (token, filter) => panggilAPI("getRekapAbsen", { filter }, token),
   hapusAbsen: (id, token) => panggilAPI("hapusAbsen", { id }, token),
   hapusAbsenBanyak: (idList, token) => panggilAPI("hapusAbsenBanyak", { idList }, token),
