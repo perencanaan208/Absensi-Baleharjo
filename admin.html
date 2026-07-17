@@ -222,7 +222,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=14"></script>
+<script src="assets/app.js?v=15"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -954,6 +954,14 @@ async function resetAbsen(id) {
   }
 }
 
+function formatTanggalIndo(tanggalISO) {
+  if (!tanggalISO) return "-";
+  const bagian = tanggalISO.split("-").map(Number);
+  const [y, m, d] = bagian;
+  if (!y || !m || !d) return tanggalISO;
+  return `${d} ${NAMA_BULAN[m - 1]} ${y}`;
+}
+
 function cetakLaporan() {
   if (!REKAP_STATE || REKAP_STATE.length === 0) {
     alert("Tidak ada data absensi untuk dicetak.");
@@ -966,17 +974,17 @@ function cetakLaporan() {
 
   const baris = REKAP_STATE.slice().reverse().map(r => `
     <tr>
-      <td>${escapeHtml(r.tanggal)}</td>
-      <td>${escapeHtml(r.jam)}</td>
+      <td>${escapeHtml(formatTanggalIndo(r.tanggal))}</td>
       <td>${escapeHtml(r.nama)}</td>
       <td>${escapeHtml(cariJabatan(r.pegawaiId))}</td>
       <td>${escapeHtml(LABEL_JENIS[r.jenis] || r.jenis)}</td>
+      <td>${escapeHtml(r.jam)}</td>
+      <td>${escapeHtml(keteranganWaktuTeks(r, CONFIG_REKAP_STATE))}</td>
       <td>${
         r.jenis === "ijin"
           ? escapeHtml(LABEL_ALASAN_IJIN[r.alasan] || r.alasan || "-") + (r.keterangan ? ": " + escapeHtml(r.keterangan) : "")
-          : (r.jarakMeter != null && r.jarakMeter !== "" ? r.jarakMeter + " m" : "-")
+          : "-"
       }</td>
-      <td>${escapeHtml(keteranganWaktuTeks(r, CONFIG_REKAP_STATE))}</td>
     </tr>
   `).join("");
 
@@ -1013,7 +1021,7 @@ function cetakLaporan() {
         </div>
       </div>
       <table>
-        <thead><tr><th>Tanggal</th><th>Jam</th><th>Nama</th><th>Jabatan</th><th>Jenis</th><th>Jarak / Keterangan</th><th>Ketepatan Waktu</th></tr></thead>
+        <thead><tr><th>Tanggal</th><th>Nama</th><th>Jabatan</th><th>Jenis</th><th>Jam</th><th>Ketepatan Waktu</th><th>Keterangan</th></tr></thead>
         <tbody>${baris}</tbody>
       </table>
 
