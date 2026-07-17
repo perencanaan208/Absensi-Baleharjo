@@ -254,7 +254,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=19"></script>
+<script src="assets/app.js?v=20"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -1020,6 +1020,66 @@ function inisialisasiFilterRekap() {
   selTahun.value = tahunSekarang;
 }
 
+// Mengelompokkan data absensi mentah (1 baris per kejadian: masuk/pulang/ijin)
+// menjadi 1 baris per pegawai per hari, supaya tabel rekap lebih ringkas.
+function kelompokkanRekapHarian(rekapList) {
+  const peta = new Map();
+  rekapList.forEach(r => {
+    const kunci = r.tanggal + "__" + r.pegawaiId;
+    if (!peta.has(kunci)) {
+      peta.set(kunci, { tanggal: r.tanggal, pegawaiId: r.pegawaiId, nama: r.nama, masuk: null, pulang: null, ijin: null });
+    }
+    peta.get(kunci)[r.jenis] = r;
+  });
+  return Array.from(peta.values());
+}
+
+// Isi 1 sel Masuk/Pulang: waktu + jarak + ketepatan waktu + tombol Reset,
+// atau teks "Belum absen ..." kalau belum ada datanya.
+function selKehadiran(rec, labelJenis) {
+  if (!rec) {
+    return `<span class="text-xs italic" style="color:var(--tinta-lembut)">Belum absen ${labelJenis}</span>`;
+  }
+  return `
+    <div class="flex flex-col items-start gap-0.5">
+      <span class="font-mono text-xs">${escapeHtml(rec.jam)} <span style="color:var(--tinta-lembut)">· ${rec.jarakMeter}m</span></span>
+      <span class="text-xs">${keteranganWaktuBaris(rec, CONFIG_REKAP_STATE)}</span>
+      <button onclick="resetAbsen('${rec.id}')" class="font-mono text-[10px] underline" style="color:var(--merah-jaga)">Reset</button>
+    </div>
+  `;
+}
+
+// Isi 1 sel Ijin: alasan + keterangan + tombol Reset, atau "-" kalau tidak ijin.
+function selIjin(rec) {
+  if (!rec) return `<span class="text-xs" style="color:var(--tinta-lembut)">-</span>`;
+  const label = LABEL_ALASAN_IJIN[rec.alasan] || rec.alasan || "-";
+  return `
+    <div class="flex flex-col items-start gap-0.5">
+      <span class="w-fit rounded-full px-2 py-0.5 text-xs" style="background:rgba(201,154,59,.2); color:var(--ijo-tua)">${escapeHtml(label)}</span>
+      ${rec.keterangan ? `<span class="text-xs" style="color:var(--tinta-lembut)">${escapeHtml(rec.keterangan)}</span>` : ""}
+      <span class="font-mono text-[10px]" style="color:var(--tinta-lembut)">${escapeHtml(rec.jam)}</span>
+      <button onclick="resetAbsen('${rec.id}')" class="font-mono text-[10px] underline" style="color:var(--merah-jaga)">Reset</button>
+    </div>
+  `;
+}
+
+function renderBarisRekapHarian(grup) {
+  // Kalau hari itu Ijin, kolom Masuk/Pulang tidak relevan (bukan berarti
+  // "belum absen") — cukup tampilkan strip.
+  const kolomMasuk = grup.ijin ? `<span class="text-xs" style="color:var(--tinta-lembut)">-</span>` : selKehadiran(grup.masuk, "masuk");
+  const kolomPulang = grup.ijin ? `<span class="text-xs" style="color:var(--tinta-lembut)">-</span>` : selKehadiran(grup.pulang, "pulang");
+  return `
+    <tr style="border-top:1px solid var(--kertas-gelap)">
+      <td class="px-3 py-3 align-top font-mono">${escapeHtml(grup.tanggal)}</td>
+      <td class="px-3 py-3 align-top">${escapeHtml(grup.nama)}</td>
+      <td class="px-3 py-3 align-top font-mono text-xs">${escapeHtml(cariJabatan(grup.pegawaiId))}</td>
+      <td class="px-3 py-3 align-top">${kolomMasuk}</td>
+      <td class="px-3 py-3 align-top">${kolomPulang}</td>
+      <td class="px-3 py-3 align-top">${selIjin(grup.ijin)}</td>
+    </tr>
+  `;
+}
+
 async function muatRekap() {
   inisialisasiFilterRekap();
   const bulan = parseInt(document.getElementById("filterBulan").value, 10);
@@ -1036,10 +1096,12 @@ async function muatRekap() {
     const config = resConfig.config;
     CONFIG_REKAP_STATE = config;
 
-    document.getElementById("catatanRekap").textContent =
-      `Menampilkan ${REKAP_STATE.length} data untuk ${NAMA_BULAN[bulan-1]} ${tahun}. Data lengkap tersedia langsung di Google Sheets.`;
+    const rekapHarian = kelompokkanRekapHarian(REKAP_STATE);
 
-    if (REKAP_STATE.length === 0) {
+    document.getElementById("catatanRekap").textContent =
+      `Menampilkan ${rekapHarian.length} baris (${REKAP_STATE.length} kejadian absen) untuk ${NAMA_BULAN[bulan-1]} ${tahun}. Data lengkap tersedia langsung di Google Sheets.`;
+
+    if (rekapHarian.length === 0) {
       wrap.innerHTML = `<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data absensi pada ${NAMA_BULAN[bulan-1]} ${tahun}.</p>`;
       return;
     }
@@ -1048,36 +1110,12 @@ async function muatRekap() {
         <table class="w-full text-left text-sm">
           <thead class="font-mono text-xs uppercase tracking-wide" style="background:rgba(232,225,206,.5)">
             <tr>
-              <th class="px-3 py-2">Tanggal</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jabatan</th><th class="px-3 py-2">Jenis</th>
-              <th class="px-3 py-2">Jam</th><th class="px-3 py-2">Jarak / Keterangan</th>
-              <th class="px-3 py-2">Ketepatan Waktu</th><th class="px-3 py-2">Aksi</th>
+              <th class="px-3 py-2">Tanggal</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jabatan</th>
+              <th class="px-3 py-2">Masuk</th><th class="px-3 py-2">Pulang</th><th class="px-3 py-2">Ijin</th>
             </tr>
           </thead>
           <tbody>
-            ${REKAP_STATE.map(r => `
-              <tr style="border-top:1px solid var(--kertas-gelap)">
-                <td class="px-3 py-2 font-mono">${escapeHtml(r.tanggal)}</td>
-                <td class="px-3 py-2">${escapeHtml(r.nama)}</td>
-                <td class="px-3 py-2 font-mono text-xs">${escapeHtml(cariJabatan(r.pegawaiId))}</td>
-                <td class="px-3 py-2">
-                  <span class="rounded-full px-2 py-0.5 text-xs" style="${
-                    r.jenis === "ijin" ? "background:rgba(201,154,59,.2); color:var(--ijo-tua)" :
-                    r.jenis === "masuk" ? "background:rgba(44,107,78,.15); color:var(--ijo-tua)" :
-                    "background:rgba(38,52,73,.12); color:var(--nila)"
-                  }">${LABEL_JENIS[r.jenis] || escapeHtml(r.jenis)}</span>
-                </td>
-                <td class="px-3 py-2 font-mono">${escapeHtml(r.jam)}</td>
-                <td class="px-3 py-2 font-mono text-xs">${
-                  r.jenis === "ijin"
-                    ? escapeHtml(LABEL_ALASAN_IJIN[r.alasan] || r.alasan || "-") + (r.keterangan ? `: ${escapeHtml(r.keterangan)}` : "")
-                    : `${r.jarakMeter}m`
-                }</td>
-                <td class="px-3 py-2 text-xs">${keteranganWaktuBaris(r, config)}</td>
-                <td class="px-3 py-2">
-                  <button onclick="resetAbsen('${r.id}')" class="font-mono text-xs underline" style="color:var(--merah-jaga)">Reset</button>
-                </td>
-              </tr>
-            `).join("")}
+            ${rekapHarian.map(renderBarisRekapHarian).join("")}
           </tbody>
         </table>
       </div>`;
