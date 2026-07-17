@@ -198,6 +198,19 @@
         <button id="btnTambahLibur" class="rounded-lg py-2 text-sm font-semibold" style="background:var(--emas-padi); color:var(--ijo-tua)">+ Tambah ke Daftar</button>
       </form>
 
+      <div class="mb-6 flex flex-col gap-3 rounded-2xl p-5" style="border:1px solid var(--kertas-gelap); background:white">
+        <h3 class="font-display text-base font-semibold" style="color:var(--ijo-tua)">Upload dari File (lebih cepat untuk banyak tanggal)</h3>
+        <p class="text-xs italic" style="color:var(--tinta-lembut)">
+          Format file CSV, satu tanggal per baris: <code class="font-mono">tanggal,keterangan,jenis</code> — tanggal format <code class="font-mono">yyyy-mm-dd</code>, jenis diisi <code class="font-mono">libur_nasional</code> atau <code class="font-mono">cuti_bersama</code>. Unduh contohnya di bawah kalau belum punya filenya.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <input type="file" id="inputFileLibur" accept=".csv,text/csv" class="flex-1 rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); min-width:180px">
+          <button type="button" onclick="uploadFileLibur()" class="rounded-lg px-4 py-2 text-sm font-semibold" style="background:var(--ijo-tua); color:var(--kertas)">Upload &amp; Tambahkan</button>
+          <button type="button" onclick="unduhTemplateLibur()" class="rounded-lg px-4 py-2 text-sm underline" style="color:var(--ijo)">Unduh Contoh CSV</button>
+        </div>
+        <p id="statusUploadLibur" class="hidden text-sm"></p>
+      </div>
+
       <div class="mb-4 flex items-center gap-2">
         <select id="filterTahunLibur" onchange="muatLibur()" class="rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); background:white"></select>
       </div>
@@ -208,7 +221,10 @@
     <div id="tabRekap" class="tabPanel hidden pb-10">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Rekap Absensi</h2>
-        <button onclick="cetakLaporan()" class="rounded-full px-4 py-2 text-sm font-semibold" style="background:var(--ijo-tua); color:var(--kertas)">🖨️ Cetak Laporan</button>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="cetakLaporan()" class="rounded-full px-4 py-2 text-sm font-semibold" style="background:var(--ijo-tua); color:var(--kertas)">🖨️ Cetak Laporan</button>
+          <button onclick="hapusSemuaAbsen()" class="rounded-full px-4 py-2 text-sm font-semibold" style="background:var(--merah-jaga); color:white">🗑️ Hapus Semua (Periode Ini)</button>
+        </div>
       </div>
       <div class="mb-4 flex items-center gap-2">
         <select id="filterBulan" onchange="muatRekap()" class="rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); background:white"></select>
@@ -222,7 +238,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=15"></script>
+<script src="assets/app.js?v=16"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -809,6 +825,76 @@ document.getElementById("formLibur").addEventListener("submit", async (e) => {
   }
 });
 
+function unduhTemplateLibur() {
+  const isi = "tanggal,keterangan,jenis\n"
+    + "2027-01-01,Tahun Baru 2027 Masehi,libur_nasional\n"
+    + "2027-02-08,Cuti Bersama Tahun Baru Imlek,cuti_bersama\n";
+  const blob = new Blob([isi], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "template-hari-libur.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Parsing CSV sederhana: satu baris = satu tanggal libur. Baris header,
+// baris kosong, atau baris dengan format tanggal salah otomatis dilewati.
+function parseCsvLibur(teks) {
+  const baris = teks.split(/\r?\n/).map(b => b.trim()).filter(b => b.length > 0);
+  const hasil = [];
+  for (const b of baris) {
+    const kolom = b.split(",").map(k => k.trim());
+    if (kolom[0].toLowerCase() === "tanggal") continue; // lewati baris header
+    const [tanggal, keterangan, jenis] = kolom;
+    if (!tanggal || !keterangan) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) continue;
+    hasil.push({ tanggal, keterangan, jenis: jenis === "cuti_bersama" ? "cuti_bersama" : "libur_nasional" });
+  }
+  return hasil;
+}
+
+async function uploadFileLibur() {
+  const fileInput = document.getElementById("inputFileLibur");
+  const status = document.getElementById("statusUploadLibur");
+  const file = fileInput.files?.[0];
+
+  if (!file) {
+    alert("Pilih file CSV terlebih dahulu.");
+    return;
+  }
+
+  status.classList.remove("hidden");
+  status.style.color = "var(--tinta-lembut)";
+  status.textContent = "Membaca file…";
+
+  try {
+    const teks = await file.text();
+    const data = parseCsvLibur(teks);
+
+    if (data.length === 0) {
+      status.style.color = "var(--merah-jaga)";
+      status.textContent = "Tidak ada baris valid ditemukan. Pastikan format: tanggal,keterangan,jenis — tanggal berformat yyyy-mm-dd.";
+      return;
+    }
+
+    status.textContent = `Mengupload ${data.length} tanggal…`;
+    const res = await api.tambahLiburBanyak(data, TOKEN);
+
+    status.style.color = "var(--ijo-tua)";
+    status.textContent = `✓ Berhasil menambahkan ${res.ditambahkan} tanggal.`
+      + (res.dilewati > 0 ? ` ${res.dilewati} baris dilewati (tanggal sudah terdaftar sebelumnya, atau format tidak valid).` : "");
+
+    fileInput.value = "";
+    muatLibur();
+  } catch (err) {
+    status.style.color = "var(--merah-jaga)";
+    status.textContent = "Gagal upload: " + err.message;
+  }
+}
+
 /* ---------------- TAB REKAP ---------------- */
 
 let REKAP_STATE = [];
@@ -948,6 +1034,33 @@ async function resetAbsen(id) {
   if (!confirm("Hapus/reset data absen ini? Pegawai akan bisa absen ulang untuk jenis yang sama pada hari itu.")) return;
   try {
     await api.hapusAbsen(id, TOKEN);
+    muatRekap();
+  } catch (err) {
+    alert("Gagal menghapus: " + err.message);
+  }
+}
+
+// Reset/hapus TOTAL semua data absensi yang sedang tampil (sesuai filter
+// bulan & tahun yang dipilih) — beda dari tombol Reset per-baris di atas
+// yang hanya menghapus satu data. Sengaja pakai konfirmasi ketik ulang teks
+// karena aksinya permanen dan tidak bisa dibatalkan.
+async function hapusSemuaAbsen() {
+  if (!REKAP_STATE || REKAP_STATE.length === 0) {
+    alert("Tidak ada data pada periode ini untuk dihapus.");
+    return;
+  }
+  const labelPeriode = `${NAMA_BULAN[parseInt(document.getElementById("filterBulan").value, 10) - 1]} ${document.getElementById("filterTahun").value}`;
+  const konfirmasi = prompt(
+    `PERINGATAN: Ini akan menghapus SEMUA ${REKAP_STATE.length} data absensi periode ${labelPeriode} secara PERMANEN dan tidak bisa dikembalikan.\n\nKetik "HAPUS" (huruf besar semua) untuk konfirmasi:`
+  );
+  if (konfirmasi !== "HAPUS") {
+    if (konfirmasi !== null) alert('Konfirmasi tidak sesuai (harus ketik persis "HAPUS"). Penghapusan dibatalkan.');
+    return;
+  }
+  try {
+    const idList = REKAP_STATE.map(r => r.id);
+    const res = await api.hapusAbsenBanyak(idList, TOKEN);
+    alert(`Berhasil menghapus ${res.dihapus} data absensi periode ${labelPeriode}.`);
     muatRekap();
   } catch (err) {
     alert("Gagal menghapus: " + err.message);
