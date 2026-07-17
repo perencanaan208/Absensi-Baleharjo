@@ -53,6 +53,7 @@
       <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="pegawai" onclick="gantiTab('pegawai')">Data Pegawai</button>
       <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="pengaturan" onclick="gantiTab('pengaturan')">Jadwal &amp; Lokasi</button>
       <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="libur" onclick="gantiTab('libur')">Hari Libur</button>
+      <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="keamanan" onclick="gantiTab('keamanan')">Keamanan</button>
       <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="rekap" onclick="gantiTab('rekap')">Rekap Absensi</button>
     </div>
   </nav>
@@ -174,6 +175,21 @@
       </form>
     </div>
 
+    <!-- TAB KEAMANAN -->
+    <div id="tabKeamanan" class="tabPanel hidden pb-10">
+      <h2 class="mb-4 font-display text-lg font-semibold" style="color:var(--ijo-tua)">Keamanan</h2>
+
+      <form id="formGantiPassword" class="flex max-w-md flex-col gap-3 rounded-2xl p-5" style="border:1px solid var(--kertas-gelap); background:white">
+        <h3 class="font-display text-base font-semibold" style="color:var(--ijo-tua)">Ganti Password Admin</h3>
+        <p class="text-xs italic" style="color:var(--tinta-lembut)">Password baru berlaku langsung. Sesi Anda saat ini tetap aktif, tidak perlu login ulang.</p>
+        <input type="password" id="passwordLama" required autocomplete="current-password" placeholder="Password lama" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        <input type="password" id="passwordBaru" required autocomplete="new-password" placeholder="Password baru (minimal 4 karakter)" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        <input type="password" id="passwordBaruUlangi" required autocomplete="new-password" placeholder="Ulangi password baru" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+        <p id="errorGantiPassword" class="text-sm hidden" style="color:var(--merah-jaga)"></p>
+        <button id="btnGantiPassword" type="submit" class="rounded-lg py-2 text-sm font-semibold" style="background:var(--merah-jaga); color:white">Simpan Password Baru</button>
+      </form>
+    </div>
+
     <!-- TAB LIBUR -->
     <div id="tabLibur" class="tabPanel hidden pb-10">
       <div class="mb-1 flex items-center justify-between">
@@ -238,7 +254,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=16"></script>
+<script src="assets/app.js?v=19"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -731,6 +747,46 @@ document.getElementById("formPengaturan").addEventListener("submit", async (e) =
     btn.textContent = "Simpan Pengaturan";
   } finally {
     btn.disabled = false;
+  }
+});
+
+document.getElementById("formGantiPassword").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("errorGantiPassword");
+  err.classList.add("hidden");
+
+  const lama = document.getElementById("passwordLama").value;
+  const baru = document.getElementById("passwordBaru").value;
+  const ulangi = document.getElementById("passwordBaruUlangi").value;
+
+  if (baru !== ulangi) {
+    err.textContent = "Password baru dan ulangi password baru tidak sama.";
+    err.classList.remove("hidden");
+    return;
+  }
+  if (baru.length < 4) {
+    err.textContent = "Password baru minimal 4 karakter.";
+    err.classList.remove("hidden");
+    return;
+  }
+  if (!confirm("Yakin ingin mengganti password admin?")) return;
+
+  const btn = document.getElementById("btnGantiPassword");
+  const teksAsli = btn.textContent;
+  btn.disabled = true; btn.textContent = "Menyimpan…";
+  try {
+    await api.gantiPasswordAdmin(lama, baru, TOKEN);
+    // Sesi memakai password sebagai token — perbarui supaya tidak ter-logout
+    // setelah password berhasil diganti.
+    TOKEN = baru;
+    sessionStorage.setItem(KUNCI_TOKEN, TOKEN);
+    document.getElementById("formGantiPassword").reset();
+    alert("Ganti password berhasil.");
+  } catch (err2) {
+    err.textContent = err2.message;
+    err.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = teksAsli;
   }
 });
 
