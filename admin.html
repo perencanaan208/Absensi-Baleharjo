@@ -63,6 +63,7 @@
         <button class="tabBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="libur" onclick="gantiTab('libur')">Hari Libur</button>
         <button class="tabBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="keamanan" onclick="gantiTab('keamanan')">Keamanan</button>
         <button class="tabBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="rekap" onclick="gantiTab('rekap')">Rekap Absensi</button>
+        <button class="tabBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="laporan" onclick="gantiTab('laporan')">Laporan Bulanan</button>
       </div>
 
       <!-- Tampilan tablet/desktop: pill mendatar seperti biasa -->
@@ -72,6 +73,7 @@
         <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="libur" onclick="gantiTab('libur')">Hari Libur</button>
         <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="keamanan" onclick="gantiTab('keamanan')">Keamanan</button>
         <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="rekap" onclick="gantiTab('rekap')">Rekap Absensi</button>
+        <button class="tabBtn rounded-full px-4 py-2 text-sm font-medium" data-tab="laporan" onclick="gantiTab('laporan')">Laporan Bulanan</button>
       </div>
     </div>
   </nav>
@@ -268,11 +270,28 @@
       <p id="catatanRekap" class="mt-4 text-center font-mono text-xs" style="color:var(--tinta-lembut)"></p>
     </div>
 
+    <!-- TAB LAPORAN BULANAN -->
+    <div id="tabLaporan" class="tabPanel hidden pb-10">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Laporan Bulanan</h2>
+        <button onclick="cetakLaporanBulanan()" class="rounded-full px-4 py-2 text-sm font-semibold" style="background:var(--ijo-tua); color:var(--kertas)">🖨️ Cetak Laporan Bulanan</button>
+      </div>
+      <p class="mb-4 text-xs italic" style="color:var(--tinta-lembut)">
+        Rekap total per pegawai dalam 1 bulan — jumlah masuk, ijin, alpa, masuk tanpa absen pulang, dan persentase kehadiran terhadap jumlah hari kerja bulan itu (di luar hari libur/cuti bersama). Kepala Desa selalu ditampilkan di baris pertama.
+      </p>
+      <div class="mb-2 flex items-center gap-2">
+        <select id="filterBulanLaporan" onchange="muatLaporanBulanan()" class="rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); background:white"></select>
+        <select id="filterTahunLaporan" onchange="muatLaporanBulanan()" class="rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); background:white"></select>
+      </div>
+      <p id="catatanLaporanBulanan" class="mb-4 font-mono text-xs" style="color:var(--tinta-lembut)"></p>
+      <div id="laporanBulananWrap"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p></div>
+    </div>
+
   </div>
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=22"></script>
+<script src="assets/app.js?v=23"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -327,6 +346,7 @@ const LABEL_TAB_ADMIN = {
   libur: "Hari Libur",
   keamanan: "Keamanan",
   rekap: "Rekap Absensi",
+  laporan: "Laporan Bulanan",
 };
 
 function gantiTab(nama) {
@@ -343,6 +363,7 @@ function gantiTab(nama) {
   if (nama === "pengaturan") muatPengaturan();
   if (nama === "libur") muatLibur();
   if (nama === "rekap") muatRekap();
+  if (nama === "laporan") muatLaporanBulanan();
 }
 
 function toggleMenuAdmin() {
@@ -1298,6 +1319,254 @@ function cetakLaporan() {
       </div>
       <table>
         <thead><tr><th>No</th><th>Tanggal</th><th>Nama</th><th>Jabatan</th><th>Masuk</th><th>Pulang</th><th>Ijin</th></tr></thead>
+        <tbody>${baris}</tbody>
+      </table>
+
+      <div class="ttd-wrap">
+        <div class="ttd-blok">
+          <p style="margin:0">Baleharjo, ${tanggalCetak}</p>
+          <p style="margin:0">Mengetahui,</p>
+          <p style="margin:0">Kepala Desa</p>
+          <div class="ttd-spasi"></div>
+          <p class="ttd-nama">${namaKepalaDesa ? escapeHtml(namaKepalaDesa) : "( .......................................... )"}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
+  win.document.close();
+}
+
+/* ---------------- TAB LAPORAN BULANAN ---------------- */
+
+let LAPORAN_BULANAN_STATE = [];
+let HARI_KERJA_BULAN_STATE = 0;
+
+function inisialisasiFilterLaporanBulanan() {
+  const selBulan = document.getElementById("filterBulanLaporan");
+  const selTahun = document.getElementById("filterTahunLaporan");
+  if (selBulan.dataset.terisi) return;
+
+  const waktu = waktuJakartaSaatIni();
+  selBulan.innerHTML = NAMA_BULAN.map((nama, i) => `<option value="${i + 1}">${nama}</option>`).join("");
+  selBulan.value = waktu.bulan;
+  selBulan.dataset.terisi = "1";
+
+  const daftarTahun = [];
+  for (let t = waktu.tahun + 1; t >= waktu.tahun - 2; t--) daftarTahun.push(t);
+  selTahun.innerHTML = daftarTahun.map(t => `<option value="${t}">${t}</option>`).join("");
+  selTahun.value = waktu.tahun;
+}
+
+function jumlahHariDalamBulan(bulan, tahun) {
+  return new Date(tahun, bulan, 0).getDate(); // tanggal 0 bulan berikutnya = hari terakhir bulan ini
+}
+
+// Menghitung daftar tanggal "hari kerja" dalam 1 bulan: hari yang masuk ke
+// salah satu kelompok jadwal DAN bukan tanggal libur/cuti bersama.
+function hitungHariKerjaBulan(bulan, tahun, config, liburBulanIni) {
+  const totalHari = jumlahHariDalamBulan(bulan, tahun);
+  const liburSet = new Set(liburBulanIni.map(l => l.tanggal));
+  const hariKerja = [];
+  for (let d = 1; d <= totalHari; d++) {
+    const tanggal = `${tahun}-${String(bulan).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const hariIndex = new Date(tahun, bulan - 1, d).getDay();
+    const kelompok = cariKelompokJadwal(config, hariIndex);
+    if (kelompok && !liburSet.has(tanggal)) hariKerja.push(tanggal);
+  }
+  return hariKerja;
+}
+
+// Kepala Desa selalu ditaruh di baris pertama, sisanya urut nama.
+function urutkanPegawaiKepalaDesaDulu(daftar) {
+  return daftar.slice().sort((a, b) => {
+    const aKades = (a.jabatan || "").toLowerCase().includes("kepala desa") ? 0 : 1;
+    const bKades = (b.jabatan || "").toLowerCase().includes("kepala desa") ? 0 : 1;
+    if (aKades !== bKades) return aKades - bKades;
+    return (a.nama || "").localeCompare(b.nama || "");
+  });
+}
+
+async function muatLaporanBulanan() {
+  inisialisasiFilterLaporanBulanan();
+  const bulan = parseInt(document.getElementById("filterBulanLaporan").value, 10);
+  const tahun = parseInt(document.getElementById("filterTahunLaporan").value, 10);
+  const wrap = document.getElementById("laporanBulananWrap");
+  wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p>';
+
+  try {
+    const [resPegawai, resRekap, resLibur, resConfig] = await Promise.all([
+      api.getPegawaiAdmin(TOKEN),
+      api.getRekapAbsen(TOKEN, { bulan, tahun }),
+      api.getLibur(tahun),
+      api.getConfig(),
+    ]);
+
+    const daftarPegawai = urutkanPegawaiKepalaDesaDulu(resPegawai.pegawaiList);
+    const config = resConfig.config;
+    CONFIG_REKAP_STATE = config; // dipakai juga oleh cetakLaporanBulanan (nama instansi & kepala desa)
+
+    const prefixBulan = `${tahun}-${String(bulan).padStart(2, "0")}`;
+    const liburBulanIni = (resLibur.libur || []).filter(l => (l.tanggal || "").indexOf(prefixBulan) === 0);
+    const hariKerjaList = hitungHariKerjaBulan(bulan, tahun, config, liburBulanIni);
+    HARI_KERJA_BULAN_STATE = hariKerjaList.length;
+
+    // Kelompokkan kejadian absen per pegawai per tanggal
+    const perPegawai = new Map();
+    resRekap.rekap.forEach(r => {
+      if (!perPegawai.has(r.pegawaiId)) perPegawai.set(r.pegawaiId, new Map());
+      const petaHari = perPegawai.get(r.pegawaiId);
+      if (!petaHari.has(r.tanggal)) petaHari.set(r.tanggal, { masuk: null, pulang: null, ijin: null });
+      petaHari.get(r.tanggal)[r.jenis] = r;
+    });
+
+    const hasil = daftarPegawai.map(p => {
+      const petaHari = perPegawai.get(p.id) || new Map();
+      let masuk = 0, ijin = 0, masukTanpaPulang = 0, alpa = 0;
+      const keteranganIjinList = [];
+
+      petaHari.forEach((hari, tanggal) => {
+        if (hari.masuk) {
+          masuk++;
+          if (!hari.pulang) masukTanpaPulang++;
+        }
+        if (hari.ijin) {
+          ijin++;
+          const label = LABEL_ALASAN_IJIN[hari.ijin.alasan] || hari.ijin.alasan || "Ijin";
+          keteranganIjinList.push(`${formatTanggalIndo(tanggal)}: ${label}${hari.ijin.keterangan ? " (" + hari.ijin.keterangan + ")" : ""}`);
+        }
+      });
+
+      // Alpa = hari kerja di mana pegawai ini sama sekali tidak tercatat masuk/ijin
+      hariKerjaList.forEach(tanggal => {
+        const hari = petaHari.get(tanggal);
+        const tercatat = hari && (hari.masuk || hari.ijin);
+        if (!tercatat) alpa++;
+      });
+
+      const persentase = HARI_KERJA_BULAN_STATE > 0
+        ? Math.round((masuk / HARI_KERJA_BULAN_STATE) * 1000) / 10
+        : 0;
+
+      return {
+        pegawaiId: p.id,
+        nama: p.nama,
+        jabatan: p.jabatan || "-",
+        masuk, ijin, alpa, masukTanpaPulang,
+        keteranganIjin: keteranganIjinList.join("; ") || "-",
+        persentase,
+      };
+    });
+
+    LAPORAN_BULANAN_STATE = hasil;
+
+    document.getElementById("catatanLaporanBulanan").textContent =
+      `Jumlah hari kerja ${NAMA_BULAN[bulan - 1]} ${tahun}: ${HARI_KERJA_BULAN_STATE} hari (sudah dikurangi hari libur/cuti bersama & hari di luar jadwal).`;
+
+    if (hasil.length === 0) {
+      wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data pegawai.</p>';
+      return;
+    }
+
+    wrap.innerHTML = `
+      <div class="overflow-x-auto rounded-xl" style="border:1px solid var(--kertas-gelap); background:white">
+        <table class="w-full text-left text-sm">
+          <thead class="font-mono text-xs uppercase tracking-wide" style="background:rgba(232,225,206,.5)">
+            <tr>
+              <th class="px-3 py-2">No</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jabatan</th>
+              <th class="px-3 py-2 text-center">Masuk</th><th class="px-3 py-2 text-center">Ijin</th><th class="px-3 py-2 text-center">Alpa</th>
+              <th class="px-3 py-2 text-center">Masuk<br>Tanpa Pulang</th><th class="px-3 py-2">Keterangan Ijin</th><th class="px-3 py-2 text-center">% Kehadiran</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${hasil.map((r, i) => `
+              <tr style="border-top:1px solid var(--kertas-gelap)">
+                <td class="px-3 py-2 align-top font-mono text-xs" style="color:var(--tinta-lembut)">${i + 1}</td>
+                <td class="px-3 py-2 align-top">${escapeHtml(r.nama)}</td>
+                <td class="px-3 py-2 align-top font-mono text-xs">${escapeHtml(r.jabatan)}</td>
+                <td class="px-3 py-2 align-top text-center font-mono">${r.masuk}</td>
+                <td class="px-3 py-2 align-top text-center font-mono">${r.ijin}</td>
+                <td class="px-3 py-2 align-top text-center font-mono" style="${r.alpa > 0 ? "color:var(--merah-jaga); font-weight:600" : ""}">${r.alpa}</td>
+                <td class="px-3 py-2 align-top text-center font-mono">${r.masukTanpaPulang}</td>
+                <td class="px-3 py-2 align-top text-xs">${escapeHtml(r.keteranganIjin)}</td>
+                <td class="px-3 py-2 align-top text-center font-mono font-semibold" style="color:${
+                  r.persentase >= 90 ? "var(--ijo-tua)" : r.persentase >= 75 ? "var(--emas-padi)" : "var(--merah-jaga)"
+                }">${r.persentase}%</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (err) {
+    wrap.innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function cetakLaporanBulanan() {
+  if (!LAPORAN_BULANAN_STATE || LAPORAN_BULANAN_STATE.length === 0) {
+    alert("Tidak ada data untuk dicetak. Buka tab Laporan Bulanan dan tunggu data selesai dimuat.");
+    return;
+  }
+  const win = window.open("", "_blank");
+  const namaInstansiCetak = (CONFIG_REKAP_STATE && CONFIG_REKAP_STATE.namaKantor) || "Pemerintah Desa Baleharjo";
+  const namaKepalaDesa = (CONFIG_REKAP_STATE && CONFIG_REKAP_STATE.namaKepalaDesa) || "";
+  const tanggalCetak = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  const bulanLabel = NAMA_BULAN[parseInt(document.getElementById("filterBulanLaporan").value, 10) - 1];
+  const tahunLabel = document.getElementById("filterTahunLaporan").value;
+
+  const baris = LAPORAN_BULANAN_STATE.map((r, i) => `
+    <tr>
+      <td style="text-align:center">${i + 1}</td>
+      <td>${escapeHtml(r.nama)}</td>
+      <td>${escapeHtml(r.jabatan)}</td>
+      <td style="text-align:center">${r.masuk}</td>
+      <td style="text-align:center">${r.ijin}</td>
+      <td style="text-align:center">${r.alpa}</td>
+      <td style="text-align:center">${r.masukTanpaPulang}</td>
+      <td>${escapeHtml(r.keteranganIjin)}</td>
+      <td style="text-align:center">${r.persentase}%</td>
+    </tr>
+  `).join("");
+
+  win.document.write(`
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+      <meta charset="UTF-8">
+      <title>Laporan Bulanan — ${escapeHtml(namaInstansiCetak)}</title>
+      <style>
+        body { font-family: Georgia, 'Times New Roman', serif; padding: 32px; color: #1B231D; }
+        .kop { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; border-bottom: 2px solid #1B231D; padding-bottom: 12px; }
+        .kop img { height: 60px; width: 60px; object-fit: contain; }
+        h1 { font-size: 17px; margin: 0; }
+        p.sub { font-size: 12px; color: #555; margin: 2px 0 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 14px; }
+        th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; vertical-align: top; }
+        th { background: #eee; }
+        .tombolCetak { margin-bottom: 20px; padding: 10px 18px; font-size: 14px; cursor: pointer; }
+        .ttd-wrap { margin-top: 56px; display: flex; justify-content: flex-end; }
+        .ttd-blok { text-align: center; font-size: 13px; width: 240px; }
+        .ttd-spasi { height: 70px; }
+        .ttd-nama { border-top: 1px solid #333; padding-top: 4px; font-weight: bold; text-decoration: underline; }
+        @media print { .tombolCetak { display: none; } }
+      </style>
+    </head>
+    <body>
+      <button class="tombolCetak" onclick="window.print()">🖨️ Cetak / Simpan sebagai PDF</button>
+      <div class="kop">
+        <img src="icons/logo-sragen.png" alt="Logo">
+        <div>
+          <h1>Laporan Rekapitulasi Kehadiran Bulanan — ${escapeHtml(namaInstansiCetak)}</h1>
+          <p class="sub">Periode: ${bulanLabel} ${tahunLabel} · Jumlah hari kerja: ${HARI_KERJA_BULAN_STATE} hari · Dicetak pada ${new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })}</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>No</th><th>Nama</th><th>Jabatan</th><th>Masuk</th><th>Ijin</th><th>Alpa</th>
+            <th>Masuk Tanpa Pulang</th><th>Keterangan Ijin</th><th>% Kehadiran</th>
+          </tr>
+        </thead>
         <tbody>${baris}</tbody>
       </table>
 
