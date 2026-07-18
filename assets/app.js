@@ -18,11 +18,29 @@ async function panggilAPI(action, payload = {}, token) {
       "SCRIPT_URL belum diisi. Buka assets/app.js, ganti baris SCRIPT_URL dengan URL Google Apps Script Anda."
     );
   }
-  const res = await fetch(SCRIPT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, token, ...payload }),
-  });
+
+  // Batas waktu tunggu supaya UI tidak macet selamanya kalau server lambat
+  // merespons (mis. Google Apps Script sedang lambat/cold start).
+  const kontrolBatalkan = new AbortController();
+  const batasWaktu = setTimeout(() => kontrolBatalkan.abort(), 25000);
+
+  let res;
+  try {
+    res = await fetch(SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action, token, ...payload }),
+      signal: kontrolBatalkan.signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error("Waktu permintaan habis (server tidak merespons dalam 25 detik). Periksa koneksi internet Anda, lalu coba lagi.");
+    }
+    throw new Error("Tidak bisa terhubung ke server: " + err.message);
+  } finally {
+    clearTimeout(batasWaktu);
+  }
+
   if (!res.ok) throw new Error("Server merespons dengan status " + res.status);
   const data = await res.json();
   if (data.sukses === false) throw new Error(data.pesan || "Terjadi kesalahan pada server.");
