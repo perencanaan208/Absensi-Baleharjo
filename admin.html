@@ -305,7 +305,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=33"></script>
+<script src="assets/app.js?v=34"></script>
 <script>
 // Modal konfirmasi custom (menggantikan confirm() bawaan browser).
 // Pakai: const ok = await tampilkanKonfirmasi("Pesan...", "Judul", "Ya, Hapus");
@@ -1597,8 +1597,8 @@ async function muatLaporanBulanan() {
           <thead class="font-mono text-xs uppercase tracking-wide" style="background:rgba(232,225,206,.5)">
             <tr>
               <th class="px-3 py-2">No</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jabatan</th>
-              <th class="px-3 py-2 text-center">Masuk</th><th class="px-3 py-2 text-center">Ijin</th><th class="px-3 py-2 text-center">Alpa</th>
-              <th class="px-3 py-2 text-center">Tidak Absen<br>Pulang</th><th class="px-3 py-2">Keterangan Ijin</th><th class="px-3 py-2 text-center">% Kehadiran</th>
+              <th class="px-3 py-2 text-center">Masuk</th><th class="px-3 py-2 text-center">Tidak Absen<br>Pulang</th><th class="px-3 py-2 text-center">Alpa</th>
+              <th class="px-3 py-2 text-center">Ijin</th><th class="px-3 py-2">Keterangan Ijin</th><th class="px-3 py-2 text-center">% Kehadiran</th>
             </tr>
           </thead>
           <tbody>
@@ -1608,9 +1608,9 @@ async function muatLaporanBulanan() {
                 <td class="px-3 py-2 align-top">${escapeHtml(r.nama)}</td>
                 <td class="px-3 py-2 align-top font-mono text-xs">${escapeHtml(r.jabatan)}</td>
                 <td class="px-3 py-2 align-top text-center font-mono">${r.masuk}</td>
-                <td class="px-3 py-2 align-top text-center font-mono">${r.ijin}</td>
-                <td class="px-3 py-2 align-top text-center font-mono" style="${r.alpa > 0 ? "color:var(--merah-jaga); font-weight:600" : ""}">${r.alpa}</td>
                 <td class="px-3 py-2 align-top text-center font-mono">${r.masukTanpaPulang}</td>
+                <td class="px-3 py-2 align-top text-center font-mono" style="${r.alpa > 0 ? "color:var(--merah-jaga); font-weight:600" : ""}">${r.alpa}</td>
+                <td class="px-3 py-2 align-top text-center font-mono">${r.ijin}</td>
                 <td class="px-3 py-2 align-top text-xs">${escapeHtml(r.keteranganIjin)}</td>
                 <td class="px-3 py-2 align-top text-center font-mono font-semibold" style="color:${
                   r.persentase >= 90 ? "var(--ijo-tua)" : r.persentase >= 75 ? "var(--emas-padi)" : "var(--merah-jaga)"
@@ -1643,9 +1643,9 @@ function cetakLaporanBulanan() {
       <td>${escapeHtml(r.nama)}</td>
       <td>${escapeHtml(r.jabatan)}</td>
       <td style="text-align:center">${r.masuk}</td>
-      <td style="text-align:center">${r.ijin}</td>
-      <td style="text-align:center">${r.alpa}</td>
       <td style="text-align:center">${r.masukTanpaPulang}</td>
+      <td style="text-align:center">${r.alpa}</td>
+      <td style="text-align:center">${r.ijin}</td>
       <td>${escapeHtml(r.keteranganIjin)}</td>
       <td style="text-align:center">${r.persentase}%</td>
     </tr>
@@ -1704,7 +1704,7 @@ function cetakLaporanBulanan() {
         <thead>
           <tr>
             <th class="tengah">No</th><th>Nama</th><th>Jabatan</th>
-            <th class="tengah">Masuk</th><th class="tengah">Ijin</th><th class="tengah">Alpa</th><th class="tengah">Tidak Absen<br>Pulang</th>
+            <th class="tengah">Masuk</th><th class="tengah">Tidak Absen<br>Pulang</th><th class="tengah">Alpa</th><th class="tengah">Ijin</th>
             <th>Keterangan Ijin</th><th class="tengah">% Hadir</th>
           </tr>
         </thead>
