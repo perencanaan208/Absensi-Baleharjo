@@ -290,7 +290,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=28"></script>
+<script src="assets/app.js?v=29"></script>
 <script>
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
@@ -323,6 +323,7 @@ document.getElementById("formLogin").addEventListener("submit", async (e) => {
 });
 
 function logout() {
+  if (!confirm("Yakin ingin keluar dari Panel Admin?")) return;
   sessionStorage.removeItem(KUNCI_TOKEN);
   TOKEN = null;
   document.getElementById("viewDashboard").classList.add("hidden");
