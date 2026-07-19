@@ -138,11 +138,11 @@ function waktuJakartaSaatIni() {
 
 function cariKelompokJadwal(config, hariIndex) {
   const jadwal = config?.jadwal ?? [];
-  return jadwal.find((k) => (k.hari || []).includes(hariIndex)) || null;
+  return jadwal.find((k) => k.aktif !== false && (k.hari || []).includes(hariIndex)) || null;
 }
 
 function ringkasanJadwal(config) {
-  const jadwal = config?.jadwal ?? [];
+  const jadwal = (config?.jadwal ?? []).filter((k) => k.aktif !== false);
   return jadwal.map((k) => {
     const label = k.label || k.hari.map((h) => NAMA_HARI[h]).join(", ");
     return `${label}: ${k.jamBuka}–${k.jamTutup} WIB`;
