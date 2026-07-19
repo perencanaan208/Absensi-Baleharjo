@@ -290,7 +290,7 @@
         <button onclick="cetakLaporanBulanan()" class="rounded-full px-4 py-2 text-sm font-semibold" style="background:var(--ijo-tua); color:var(--kertas)">🖨️ Cetak Laporan Bulanan</button>
       </div>
       <p class="mb-4 text-xs italic" style="color:var(--tinta-lembut)">
-        Rekap total per pegawai dalam 1 bulan — jumlah masuk, ijin, alpa, masuk tanpa absen pulang, dan persentase kehadiran terhadap jumlah hari kerja bulan itu (di luar hari libur/cuti bersama). Kepala Desa selalu ditampilkan di baris pertama.
+        Rekap total per pegawai dalam 1 bulan — jumlah masuk, ijin, alpa, masuk tanpa absen pulang, dan persentase kehadiran terhadap jumlah hari kerja bulan itu (di luar hari libur/cuti bersama). Urutan baris mengikuti struktur organisasi: Kepala Desa, Sekretaris Desa, para Kebayan, Kasi, lalu Kaur.
       </p>
       <div class="mb-2 flex items-center gap-2">
         <select id="filterBulanLaporan" onchange="muatLaporanBulanan()" class="rounded-lg px-3 py-2 text-sm" style="border:1px solid var(--kertas-gelap); background:white"></select>
@@ -305,7 +305,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=31"></script>
+<script src="assets/app.js?v=32"></script>
 <script>
 // Modal konfirmasi custom (menggantikan confirm() bawaan browser).
 // Pakai: const ok = await tampilkanKonfirmasi("Pesan...", "Judul", "Ya, Hapus");
@@ -1439,12 +1439,32 @@ function hitungHariKerjaBulan(bulan, tahun, config, liburBulanIni) {
   return hariKerja;
 }
 
-// Kepala Desa selalu ditaruh di baris pertama, sisanya urut nama.
+// Urutan tetap sesuai struktur organisasi Desa Baleharjo. Jabatan yang tidak
+// ada di daftar ini otomatis diletakkan di baris paling bawah, diurutkan
+// berdasarkan nama.
+const URUTAN_JABATAN = [
+  "Kepala desa",
+  "Sekretaris Desa",
+  "Kebayan Sridarto",
+  "Kebayan Bonorejo",
+  "Kebayan Gedad",
+  "Kebayan Krapyak",
+  "Kebayan Ngaringan",
+  "Kasi Pemerintahan",
+  "Kasi Kesra",
+  "Kasi Pelayanan",
+  "Kaur Perencanaan",
+  "Kaur Keuangan",
+];
+const URUTAN_JABATAN_LOWER = URUTAN_JABATAN.map(j => j.toLowerCase());
+
 function urutkanPegawaiKepalaDesaDulu(daftar) {
   return daftar.slice().sort((a, b) => {
-    const aKades = (a.jabatan || "").toLowerCase().includes("kepala desa") ? 0 : 1;
-    const bKades = (b.jabatan || "").toLowerCase().includes("kepala desa") ? 0 : 1;
-    if (aKades !== bKades) return aKades - bKades;
+    const idxA = URUTAN_JABATAN_LOWER.indexOf((a.jabatan || "").trim().toLowerCase());
+    const idxB = URUTAN_JABATAN_LOWER.indexOf((b.jabatan || "").trim().toLowerCase());
+    const rankA = idxA === -1 ? 999 : idxA;
+    const rankB = idxB === -1 ? 999 : idxB;
+    if (rankA !== rankB) return rankA - rankB;
     return (a.nama || "").localeCompare(b.nama || "");
   });
 }
