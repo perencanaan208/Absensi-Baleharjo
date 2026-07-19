@@ -305,7 +305,7 @@
 </div>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=32"></script>
+<script src="assets/app.js?v=33"></script>
 <script>
 // Modal konfirmasi custom (menggantikan confirm() bawaan browser).
 // Pakai: const ok = await tampilkanKonfirmasi("Pesan...", "Judul", "Ya, Hapus");
@@ -691,6 +691,7 @@ async function muatPengaturan() {
   document.getElementById("cfgToleransi").value = cfg.toleransiMenit ?? 60;
 
   JADWAL_STATE = (cfg.jadwal && cfg.jadwal.length > 0) ? cfg.jadwal : JADWAL_STATE;
+  JADWAL_EDIT_STATE = JADWAL_STATE.map(() => false);
   renderJadwalGroups();
   perbaruiStatusKoordinat();
 }
@@ -728,46 +729,84 @@ function perbaruiStatusKoordinat() {
 document.getElementById("cfgLat").addEventListener("input", perbaruiStatusKoordinat);
 document.getElementById("cfgLon").addEventListener("input", perbaruiStatusKoordinat);
 
-function renderJadwalGroups() {
-  const wrap = document.getElementById("jadwalGroupsWrap");
-  wrap.innerHTML = JADWAL_STATE.map((kelompok, gi) => `
-    <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
-      <div class="mb-3 flex items-center gap-2">
-        <input value="${escapeHtml(kelompok.label || "")}" placeholder="Nama kelompok, mis. Senin - Kamis"
-          oninput="ubahLabelKelompok(${gi}, this.value)"
-          class="flex-1 rounded-lg px-3 py-2 text-sm font-medium" style="border:1px solid var(--kertas-gelap)">
-        ${JADWAL_STATE.length > 1
-          ? `<button type="button" onclick="hapusKelompokJadwal(${gi})" class="font-mono text-xs underline shrink-0" style="color:var(--merah-jaga)">Hapus</button>`
-          : ""}
-      </div>
-      <div class="mb-3 flex flex-wrap gap-1.5">
-        ${HARI_LABEL.map((label, hi) => `
-          <button type="button" onclick="toggleHariDiKelompok(${gi}, ${hi})" class="rounded-full px-3 py-1.5 text-xs"
-            style="${kelompok.hari.includes(hi)
-              ? "background:var(--ijo-tua); color:var(--kertas)"
-              : "border:1px solid var(--kertas-gelap); color:var(--tinta-lembut)"}">
-            ${label}
-          </button>
-        `).join("")}
-      </div>
-      <div class="flex items-center gap-2">
-        <input type="time" value="${kelompok.jamBuka}" oninput="ubahJamKelompok(${gi}, 'jamBuka', this.value)"
-          class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
-        <span>–</span>
-        <input type="time" value="${kelompok.jamTutup}" oninput="ubahJamKelompok(${gi}, 'jamTutup', this.value)"
-          class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
-        <span class="font-mono text-xs" style="color:var(--tinta-lembut)">WIB</span>
-      </div>
-    </div>
-  `).join("");
+let JADWAL_EDIT_STATE = []; // true = form kelompok itu sedang terbuka untuk diedit
 
-  const hariDipakai = JADWAL_STATE.flatMap(k => k.hari);
+function renderJadwalGroups() {
+  // Samakan panjang JADWAL_EDIT_STATE dengan JADWAL_STATE (default: tertutup/ringkas)
+  while (JADWAL_EDIT_STATE.length < JADWAL_STATE.length) JADWAL_EDIT_STATE.push(false);
+  JADWAL_EDIT_STATE.length = JADWAL_STATE.length;
+
+  const wrap = document.getElementById("jadwalGroupsWrap");
+  wrap.innerHTML = JADWAL_STATE.map((kelompok, gi) => {
+    const aktif = kelompok.aktif !== false;
+    const sedangEdit = !!JADWAL_EDIT_STATE[gi];
+    return `
+    <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white; opacity:${aktif ? "1" : ".55"}">
+      <div class="mb-1 flex items-center justify-between gap-2">
+        <label class="flex shrink-0 items-center gap-1.5 text-xs" style="color:var(--tinta-lembut)">
+          <input type="checkbox" ${aktif ? "checked" : ""} onchange="toggleAktifKelompok(${gi}, this.checked)">
+          Aktif
+        </label>
+        <span class="min-w-0 flex-1 truncate text-sm font-medium">${escapeHtml(kelompok.label || "(Tanpa nama)")}</span>
+        <div class="flex shrink-0 items-center gap-3">
+          <button type="button" onclick="toggleEditKelompok(${gi})" class="font-mono text-xs underline" style="color:var(--ijo)">${sedangEdit ? "Tutup" : "Edit"}</button>
+          ${JADWAL_STATE.length > 1
+            ? `<button type="button" onclick="hapusKelompokJadwal(${gi})" class="font-mono text-xs underline" style="color:var(--merah-jaga)">Hapus</button>`
+            : ""}
+        </div>
+      </div>
+
+      ${!sedangEdit ? `
+        <p class="mt-2 text-xs" style="color:var(--tinta-lembut)">
+          ${kelompok.hari.length ? kelompok.hari.map(h => HARI_LABEL[h]).join(", ") : "Belum pilih hari"} · ${kelompok.jamBuka}–${kelompok.jamTutup} WIB
+          ${aktif ? "" : " · <span style=\"color:var(--merah-jaga)\">nonaktif</span>"}
+        </p>
+      ` : `
+        <div class="mt-3 flex flex-col gap-3">
+          <input value="${escapeHtml(kelompok.label || "")}" placeholder="Nama kelompok, mis. Senin - Kamis"
+            oninput="ubahLabelKelompok(${gi}, this.value)"
+            class="rounded-lg px-3 py-2 text-sm font-medium" style="border:1px solid var(--kertas-gelap)">
+          <div class="flex flex-wrap gap-1.5">
+            ${HARI_LABEL.map((label, hi) => `
+              <button type="button" onclick="toggleHariDiKelompok(${gi}, ${hi})" class="rounded-full px-3 py-1.5 text-xs"
+                style="${kelompok.hari.includes(hi)
+                  ? "background:var(--ijo-tua); color:var(--kertas)"
+                  : "border:1px solid var(--kertas-gelap); color:var(--tinta-lembut)"}">
+                ${label}
+              </button>
+            `).join("")}
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="time" value="${kelompok.jamBuka}" oninput="ubahJamKelompok(${gi}, 'jamBuka', this.value)"
+              class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+            <span>–</span>
+            <input type="time" value="${kelompok.jamTutup}" oninput="ubahJamKelompok(${gi}, 'jamTutup', this.value)"
+              class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+            <span class="font-mono text-xs" style="color:var(--tinta-lembut)">WIB</span>
+          </div>
+        </div>
+      `}
+    </div>
+  `;
+  }).join("");
+
+  const hariDipakai = JADWAL_STATE.filter(k => k.aktif !== false).flatMap(k => k.hari);
   const hariBelumDipakai = HARI_LABEL.map((_, i) => i).filter(i => !hariDipakai.includes(i));
   if (hariBelumDipakai.length > 0) {
     wrap.innerHTML += `<p class="text-xs italic" style="color:var(--tinta-lembut)">
-      ${hariBelumDipakai.map(i => HARI_LABEL[i]).join(", ")} belum masuk kelompok manapun — absensi otomatis ditutup di hari tersebut.
+      ${hariBelumDipakai.map(i => HARI_LABEL[i]).join(", ")} belum masuk kelompok aktif manapun — absensi otomatis ditutup di hari tersebut.
     </p>`;
   }
+}
+
+function toggleEditKelompok(groupIndex) {
+  JADWAL_EDIT_STATE[groupIndex] = !JADWAL_EDIT_STATE[groupIndex];
+  renderJadwalGroups();
+}
+
+function toggleAktifKelompok(groupIndex, aktif) {
+  JADWAL_STATE[groupIndex].aktif = aktif;
+  renderJadwalGroups();
 }
 
 function toggleHariDiKelompok(groupIndex, hariIndex) {
@@ -792,7 +831,8 @@ function ubahJamKelompok(groupIndex, field, value) {
 }
 
 function tambahKelompokJadwal() {
-  JADWAL_STATE.push({ label: "", hari: [], jamBuka: "07:00", jamTutup: "16:00" });
+  JADWAL_STATE.push({ label: "", hari: [], jamBuka: "07:00", jamTutup: "16:00", aktif: true });
+  JADWAL_EDIT_STATE.push(true); // kelompok baru langsung terbuka untuk diisi
   renderJadwalGroups();
 }
 
@@ -801,6 +841,7 @@ async function hapusKelompokJadwal(groupIndex) {
   const ok = await tampilkanKonfirmasi("Hapus kelompok jadwal ini?", "Hapus Kelompok Jadwal", "Ya, Hapus");
   if (!ok) return;
   JADWAL_STATE.splice(groupIndex, 1);
+  JADWAL_EDIT_STATE.splice(groupIndex, 1);
   renderJadwalGroups();
 }
 
