@@ -100,6 +100,16 @@
         <button type="button" data-alasan="lainnya" onclick="pilihAlasanIjin('lainnya')" class="alasanBtn rounded-xl py-3 text-sm font-medium" style="border:1px solid var(--kertas-gelap); background:white; color:var(--tinta-lembut)">Lainnya</button>
       </div>
     </div>
+    <div id="wrapDinasLuar" class="hidden flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="font-mono text-xs uppercase tracking-wide" style="color:var(--tinta-lembut)">Nama Kegiatan</label>
+        <input id="inputNamaKegiatanDL" type="text" placeholder="mis. Rapat Koordinasi Kecamatan" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="font-mono text-xs uppercase tracking-wide" style="color:var(--tinta-lembut)">Tempat Dinas Luar</label>
+        <input id="inputTempatDL" type="text" placeholder="mis. Kantor Kecamatan Sukodono" class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)">
+      </div>
+    </div>
     <div id="wrapKeteranganIjin" class="hidden flex-col gap-1">
       <label class="font-mono text-xs uppercase tracking-wide" style="color:var(--tinta-lembut)">Keterangan</label>
       <textarea id="inputKeteranganIjin" rows="3" placeholder="Tuliskan alasan ijin Anda..." class="rounded-lg px-3 py-2" style="border:1px solid var(--kertas-gelap)"></textarea>
@@ -351,6 +361,9 @@ function mulaiIjin() {
   KETERANGAN_IJIN = "";
   document.getElementById("inputKeteranganIjin").value = "";
   document.getElementById("wrapKeteranganIjin").classList.add("hidden");
+  document.getElementById("inputNamaKegiatanDL").value = "";
+  document.getElementById("inputTempatDL").value = "";
+  document.getElementById("wrapDinasLuar").classList.add("hidden");
   document.getElementById("errorIjin").classList.add("hidden");
   document.querySelectorAll(".alasanBtn").forEach(b => {
     b.style.background = "white"; b.style.color = "var(--tinta-lembut)"; b.style.border = "1px solid var(--kertas-gelap)";
@@ -368,6 +381,9 @@ function pilihAlasanIjin(kode) {
   });
   document.getElementById("wrapKeteranganIjin").classList.toggle("hidden", kode !== "lainnya");
   if (kode === "lainnya") document.getElementById("wrapKeteranganIjin").classList.add("flex");
+
+  document.getElementById("wrapDinasLuar").classList.toggle("hidden", kode !== "dinas_luar");
+  if (kode === "dinas_luar") document.getElementById("wrapDinasLuar").classList.add("flex");
 }
 
 function lanjutVerifikasiIjin() {
@@ -384,7 +400,20 @@ function lanjutVerifikasiIjin() {
     err.classList.remove("hidden");
     return;
   }
-  KETERANGAN_IJIN = keterangan;
+
+  if (ALASAN_IJIN === "dinas_luar") {
+    const namaKegiatan = document.getElementById("inputNamaKegiatanDL").value.trim();
+    const tempatDL = document.getElementById("inputTempatDL").value.trim();
+    if (!namaKegiatan || !tempatDL) {
+      err.textContent = "Isi Nama Kegiatan dan Tempat Dinas Luar terlebih dahulu.";
+      err.classList.remove("hidden");
+      return;
+    }
+    KETERANGAN_IJIN = `Kegiatan: ${namaKegiatan} — Tempat: ${tempatDL}`;
+  } else {
+    KETERANGAN_IJIN = keterangan;
+  }
+
   LOKASI = null; JARAK = null;
   mulaiKamera();
 }
