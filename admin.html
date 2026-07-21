@@ -1444,6 +1444,7 @@ function cetakLaporan() {
 
 let LAPORAN_BULANAN_STATE = [];
 let HARI_KERJA_BULAN_STATE = 0;
+let TOTAL_MENIT_KERJA_BULAN_STATE = 0;
 
 function inisialisasiFilterLaporanBulanan() {
   const selBulan = document.getElementById("filterBulanLaporan");
@@ -1510,6 +1511,59 @@ function urutkanPegawaiKepalaDesaDulu(daftar) {
   });
 }
 
+// Ubah string "HH:MM" jadi total menit sejak 00:00. Return null kalau format
+// tidak valid/kosong, supaya pemanggilnya bisa memperlakukan hari itu sebagai
+// "tidak bisa dihitung" alih-alih diam-diam menganggapnya 0 menit.
+function menitDariJam(jamStr) {
+  if (!jamStr) return null;
+  const [h, m] = String(jamStr).split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function formatDurasiJam(totalMenit) {
+  const m = Math.max(0, Math.round(totalMenit || 0));
+  const j = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${j}j ${mm}m`;
+}
+
+// Total menit kerja RESMI (jamTutup − jamBuka jadwal, bukan jendela toleransi)
+// untuk seluruh hari kerja dalam 1 bulan. Ini jadi penyebut % Jam Efektif.
+function hitungTotalMenitKerjaBulan(hariKerjaList, config) {
+  let total = 0;
+  hariKerjaList.forEach(tanggal => {
+    const hariIndex = new Date(tanggal + "T00:00:00").getDay();
+    const kelompok = cariKelompokJadwal(config, hariIndex);
+    if (!kelompok) return;
+    const mBuka = menitDariJam(kelompok.jamBuka);
+    const mTutup = menitDariJam(kelompok.jamTutup);
+    if (mBuka == null || mTutup == null) return;
+    total += Math.max(0, mTutup - mBuka);
+  });
+  return total;
+}
+
+// Jam efektif kehadiran 1 pegawai pada 1 hari = irisan antara jam kerja
+// RESMI jadwal dan jam aktual absen masuk-pulang.
+//   mulaiEfektif  = jam yang LEBIH TELAT antara jam masuk jadwal & jam absen
+//                   masuk aktual → datang lebih pagi TIDAK menambah jam efektif.
+//   selesaiEfektif = jam yang LEBIH AWAL antara jam pulang jadwal & jam absen
+//                   pulang aktual → pulang lebih larut TIDAK menambah jam efektif.
+// Kalau salah satu absen (masuk/pulang) tidak ada, atau pegawai absen masuk
+// setelah jam pulang jadwal usai (dst.), hasilnya 0 — bukan minus.
+function hitungMenitEfektifHari(kelompok, jamMasukAktual, jamPulangAktual) {
+  if (!kelompok) return 0;
+  const mBukaJadwal = menitDariJam(kelompok.jamBuka);
+  const mTutupJadwal = menitDariJam(kelompok.jamTutup);
+  const mMasuk = menitDariJam(jamMasukAktual);
+  const mPulang = menitDariJam(jamPulangAktual);
+  if (mBukaJadwal == null || mTutupJadwal == null || mMasuk == null || mPulang == null) return 0;
+  const mulaiEfektif = Math.max(mBukaJadwal, mMasuk);
+  const selesaiEfektif = Math.min(mTutupJadwal, mPulang);
+  return Math.max(0, selesaiEfektif - mulaiEfektif);
+}
+
 async function muatLaporanBulanan() {
   inisialisasiFilterLaporanBulanan();
   const bulan = parseInt(document.getElementById("filterBulanLaporan").value, 10);
@@ -1533,6 +1587,8 @@ async function muatLaporanBulanan() {
     const liburBulanIni = (resLibur.libur || []).filter(l => (l.tanggal || "").indexOf(prefixBulan) === 0);
     const hariKerjaList = hitungHariKerjaBulan(bulan, tahun, config, liburBulanIni);
     HARI_KERJA_BULAN_STATE = hariKerjaList.length;
+    const totalMenitKerjaBulan = hitungTotalMenitKerjaBulan(hariKerjaList, config);
+    TOTAL_MENIT_KERJA_BULAN_STATE = totalMenitKerjaBulan;
 
     // Kelompokkan kejadian absen per pegawai per tanggal
     const perPegawai = new Map();
@@ -1545,13 +1601,18 @@ async function muatLaporanBulanan() {
 
     const hasil = daftarPegawai.map(p => {
       const petaHari = perPegawai.get(p.id) || new Map();
-      let masuk = 0, ijin = 0, masukTanpaPulang = 0, alpa = 0;
+      let masuk = 0, ijin = 0, masukTanpaPulang = 0, alpa = 0, menitEfektif = 0;
       const keteranganIjinList = [];
 
       petaHari.forEach((hari, tanggal) => {
         if (hari.masuk) {
           masuk++;
           if (!hari.pulang) masukTanpaPulang++;
+          else {
+            const hariIndex = new Date(tanggal + "T00:00:00").getDay();
+            const kelompok = cariKelompokJadwal(config, hariIndex);
+            menitEfektif += hitungMenitEfektifHari(kelompok, hari.masuk.jam, hari.pulang.jam);
+          }
         }
         if (hari.ijin) {
           ijin++;
@@ -1570,6 +1631,9 @@ async function muatLaporanBulanan() {
       const persentase = HARI_KERJA_BULAN_STATE > 0
         ? Math.round((masuk / HARI_KERJA_BULAN_STATE) * 1000) / 10
         : 0;
+      const persentaseJamEfektif = totalMenitKerjaBulan > 0
+        ? Math.round((menitEfektif / totalMenitKerjaBulan) * 1000) / 10
+        : 0;
 
       return {
         pegawaiId: p.id,
@@ -1578,13 +1642,16 @@ async function muatLaporanBulanan() {
         masuk, ijin, alpa, masukTanpaPulang,
         keteranganIjin: keteranganIjinList.join("; ") || "-",
         persentase,
+        menitEfektif, totalMenitKerjaBulan, persentaseJamEfektif,
       };
     });
 
     LAPORAN_BULANAN_STATE = hasil;
 
-    document.getElementById("catatanLaporanBulanan").textContent =
-      `Jumlah hari kerja ${NAMA_BULAN[bulan - 1]} ${tahun}: ${HARI_KERJA_BULAN_STATE} hari (sudah dikurangi hari libur/cuti bersama & hari di luar jadwal).`;
+    document.getElementById("catatanLaporanBulanan").innerHTML =
+      `Jumlah hari kerja ${NAMA_BULAN[bulan - 1]} ${tahun}: ${HARI_KERJA_BULAN_STATE} hari (sudah dikurangi hari libur/cuti bersama & hari di luar jadwal).`
+      + `<br>Jumlah jam kerja resmi ${NAMA_BULAN[bulan - 1]} ${tahun}: ${formatDurasiJam(totalMenitKerjaBulan)}. `
+      + `<span style="color:var(--tinta-lembut)">% Jam Efektif dihitung dari irisan jam absen masuk–pulang dengan jam kerja resmi (datang lebih awal/pulang lebih larut tidak menambah jam efektif; hari tanpa absen pulang dihitung 0 jam).</span>`;
 
     if (hasil.length === 0) {
       wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada data pegawai.</p>';
@@ -1598,7 +1665,7 @@ async function muatLaporanBulanan() {
             <tr>
               <th class="px-3 py-2">No</th><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Jabatan</th>
               <th class="px-3 py-2 text-center">Masuk</th><th class="px-3 py-2 text-center">Tidak Absen<br>Pulang</th><th class="px-3 py-2 text-center">Alpa</th>
-              <th class="px-3 py-2 text-center">Ijin</th><th class="px-3 py-2">Keterangan Ijin</th><th class="px-3 py-2 text-center">% Kehadiran</th>
+              <th class="px-3 py-2 text-center">Ijin</th><th class="px-3 py-2">Keterangan Ijin</th><th class="px-3 py-2 text-center">% Kehadiran</th><th class="px-3 py-2 text-center">% Jam Efektif</th>
             </tr>
           </thead>
           <tbody>
@@ -1615,6 +1682,9 @@ async function muatLaporanBulanan() {
                 <td class="px-3 py-2 align-top text-center font-mono font-semibold" style="color:${
                   r.persentase >= 90 ? "var(--ijo-tua)" : r.persentase >= 75 ? "var(--emas-padi)" : "var(--merah-jaga)"
                 }">${r.persentase}%</td>
+                <td class="px-3 py-2 align-top text-center font-mono font-semibold" style="color:${
+                  r.persentaseJamEfektif >= 90 ? "var(--ijo-tua)" : r.persentaseJamEfektif >= 75 ? "var(--emas-padi)" : "var(--merah-jaga)"
+                }" title="${formatDurasiJam(r.menitEfektif)} dari ${formatDurasiJam(r.totalMenitKerjaBulan)} jam kerja resmi">${r.persentaseJamEfektif}%</td>
               </tr>
             `).join("")}
           </tbody>
@@ -1648,6 +1718,7 @@ function cetakLaporanBulanan() {
       <td style="text-align:center">${r.ijin}</td>
       <td>${escapeHtml(r.keteranganIjin)}</td>
       <td style="text-align:center">${r.persentase}%</td>
+      <td style="text-align:center">${r.persentaseJamEfektif}%</td>
     </tr>
   `).join("");
 
@@ -1692,20 +1763,20 @@ function cetakLaporanBulanan() {
         <img src="icons/logo-sragen.png" alt="Logo">
         <div>
           <h1>Laporan Rekapitulasi Kehadiran Bulanan — ${escapeHtml(namaInstansiCetak)}</h1>
-          <p class="sub">Periode: ${bulanLabel} ${tahunLabel} · Jumlah hari kerja: ${HARI_KERJA_BULAN_STATE} hari · Dicetak pada ${new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })}</p>
+          <p class="sub">Periode: ${bulanLabel} ${tahunLabel} · Jumlah hari kerja: ${HARI_KERJA_BULAN_STATE} hari · Jam kerja resmi: ${formatDurasiJam(TOTAL_MENIT_KERJA_BULAN_STATE)} · Dicetak pada ${new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })}</p>
         </div>
       </div>
       <table>
         <colgroup>
           <col class="col-no"><col class="col-nama"><col class="col-jabatan">
           <col class="col-angka"><col class="col-angka"><col class="col-angka"><col class="col-angka">
-          <col class="col-ket"><col class="col-persen">
+          <col class="col-ket"><col class="col-persen"><col class="col-persen">
         </colgroup>
         <thead>
           <tr>
             <th class="tengah">No</th><th>Nama</th><th>Jabatan</th>
             <th class="tengah">Masuk</th><th class="tengah">Tidak Absen<br>Pulang</th><th class="tengah">Alpa</th><th class="tengah">Ijin</th>
-            <th>Keterangan Ijin</th><th class="tengah">% Hadir</th>
+            <th>Keterangan Ijin</th><th class="tengah">% Hadir</th><th class="tengah">% Jam<br>Efektif</th>
           </tr>
         </thead>
         <tbody>${baris}</tbody>
