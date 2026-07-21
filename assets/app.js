@@ -296,6 +296,63 @@ function cocokkanWajah(descriptorBaru, daftarPegawai) {
   return null;
 }
 
+/* ------------------------- Liveness (anti-spoof) ------------------------- */
+// Deteksi kedipan mata memakai 68 titik landmark wajah yang sudah dimuat
+// untuk keperluan pengenalan wajah — jadi tidak perlu model tambahan.
+// Tujuannya mencegah verifikasi lolos hanya dengan foto cetak/foto di layar
+// HP yang disodorkan ke kamera, karena foto diam tidak bisa berkedip.
+//
+// Eye Aspect Ratio (EAR): rasio tinggi vs lebar bentuk mata dari 6 titik
+// kontur mata. Nilainya turun tajam saat mata menutup, lalu naik lagi saat
+// terbuka — pola inilah yang dipakai untuk mendeteksi satu siklus kedipan.
+const AMBANG_EAR_TUTUP = 0.21; // di bawah ini dianggap mata sedang menutup
+const AMBANG_EAR_BUKA = 0.26;  // di atas ini dianggap mata sudah terbuka lagi
+
+function jarakTitik(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+// points: array 6 titik kontur satu mata, urutan hasil faceapi getLeftEye()/getRightEye()
+function hitungEAR(points) {
+  if (!points || points.length < 6) return null;
+  const [p1, p2, p3, p4, p5, p6] = points;
+  const vertikal = jarakTitik(p2, p6) + jarakTitik(p3, p5);
+  const horizontal = jarakTitik(p1, p4);
+  if (horizontal === 0) return null;
+  return vertikal / (2 * horizontal);
+}
+
+// Rata-rata EAR kedua mata dari hasil faceapi.withFaceLandmarks(). Semakin
+// kecil nilainya semakin tertutup matanya.
+function hitungRataEAR(landmarks) {
+  if (!landmarks) return null;
+  const earKiri = hitungEAR(landmarks.getLeftEye());
+  const earKanan = hitungEAR(landmarks.getRightEye());
+  if (earKiri == null || earKanan == null) return null;
+  return (earKiri + earKanan) / 2;
+}
+
+// Pelacak status kedipan lintas-frame. Dipanggil setiap frame video dengan
+// nilai EAR terbaru; mengembalikan true PERSIS pada frame saat satu siklus
+// kedipan (terbuka → menutup → terbuka) baru saja selesai terdeteksi.
+// Pakai ambang ganda (hysteresis) supaya noise kecil di sekitar satu ambang
+// tidak dibaca sebagai kedipan berulang.
+function buatPelacakKedipan() {
+  let status = "terbuka";
+  return function prosesFrameEAR(ear) {
+    if (ear == null) return false;
+    if (status === "terbuka" && ear < AMBANG_EAR_TUTUP) {
+      status = "menutup";
+      return false;
+    }
+    if (status === "menutup" && ear > AMBANG_EAR_BUKA) {
+      status = "terbuka";
+      return true; // satu siklus kedipan lengkap terdeteksi
+    }
+    return false;
+  };
+}
+
 /* ----------------------------- Kamera helper ----------------------------- */
 
 async function nyalakanKamera(videoEl) {
