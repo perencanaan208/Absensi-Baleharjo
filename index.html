@@ -85,6 +85,7 @@
       Ajukan Ijin
       <span class="mt-0.5 block font-mono text-xs font-normal" style="color:var(--tinta-lembut)">Ijin tidak masuk kerja</span>
     </button>
+    <p id="infoJamTutup" class="mt-1 text-center font-mono text-xs" style="color:var(--tinta-lembut)"></p>
   </div>
 
   <!-- STATE: form ijin -->
@@ -237,6 +238,31 @@ function updateBadge(buka) {
   }
 }
 
+// Tambahkan sejumlah menit ke string jam "HH:MM", dipakai untuk menghitung
+// jam tutup efektif setelah memperhitungkan toleransi.
+function tambahMenitJam(jamStr, menit) {
+  const [h, m] = jamStr.split(":").map(Number);
+  let total = h * 60 + m + (menit || 0);
+  total = ((total % 1440) + 1440) % 1440; // jaga-jaga kalau lewat tengah malam
+  const hh = String(Math.floor(total / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+// Tampilkan peringatan jam tutup absensi hari ini di bawah tombol, mengikuti
+// jadwal jam kerja per hari (mis. Jumat tutup lebih awal dari Senin-Kamis)
+// DAN toleransi (menit) yang diatur admin — jadi kalau jam kerja tutup 16:00
+// dengan toleransi 60 menit, peringatan menunjukkan absen ditutup 17:00.
+function updateInfoJamTutup() {
+  const el = document.getElementById("infoJamTutup");
+  if (!el) return;
+  const waktuSkrg = waktuJakartaSaatIni();
+  const kelompok = cariKelompokJadwal(CONFIG, waktuSkrg.hariIndex);
+  if (!kelompok) { el.textContent = ""; return; }
+  const jamTutupEfektif = tambahMenitJam(kelompok.jamTutup, CONFIG.toleransiMenit);
+  el.textContent = `⏰ Absensi hari ini ditutup pukul ${jamTutupEfektif} WIB`;
+}
+
 async function muatRingkasanHariIni() {
   const wrap = document.getElementById("ringkasanHariIni");
   try {
@@ -254,6 +280,9 @@ async function muatRingkasanHariIni() {
 // Otomatis reset tiap hari karena selalu ambil data hari ini (WIB) — cukup
 // disegarkan berkala selama halaman terbuka, dan setiap ada absen baru.
 setInterval(muatRingkasanHariIni, 60000);
+setInterval(() => {
+  if (!document.getElementById("statePilihJenis").classList.contains("hidden")) updateInfoJamTutup();
+}, 60000);
 
 async function init() {
   try {
@@ -276,6 +305,7 @@ async function init() {
   const st = statusJadwal(CONFIG, cariLiburHariIni(LIBUR_LIST));
   updateBadge(st.buka);
   if (st.buka) {
+    updateInfoJamTutup();
     tampilkan("statePilihJenis");
   } else {
     document.getElementById("pesanTutup").textContent = st.pesan;
@@ -615,7 +645,7 @@ function kembaliAwal() {
   JENIS = null; LOKASI = null; JARAK = null; ALASAN_IJIN = null; KETERANGAN_IJIN = "";
   const st = statusJadwal(CONFIG, cariLiburHariIni(LIBUR_LIST));
   updateBadge(st.buka);
-  if (st.buka) tampilkan("statePilihJenis");
+  if (st.buka) { updateInfoJamTutup(); tampilkan("statePilihJenis"); }
   else {
     document.getElementById("pesanTutup").textContent = st.pesan;
     document.getElementById("jamLayananWrap").innerHTML = ringkasanJadwal(CONFIG)
