@@ -1754,6 +1754,9 @@ function cetakLaporanBulanan() {
         .ttd-blok { text-align: center; font-size: 12px; width: 220px; }
         .ttd-spasi { height: 60px; }
         .ttd-nama { border-top: 1px solid #333; padding-top: 4px; font-weight: bold; text-decoration: underline; }
+        .catatan-cetak { margin-top: 36px; padding-top: 10px; border-top: 1px solid #ccc; font-size: 8.5px; color: #444; page-break-inside: avoid; }
+        .catatan-cetak p { margin: 0 0 3px; }
+        .catatan-cetak b { color: #1B231D; }
         @media print { .tombolCetak { display: none; } body { padding: 0; } }
       </style>
     </head>
@@ -1790,6 +1793,14 @@ function cetakLaporanBulanan() {
           <div class="ttd-spasi"></div>
           <p class="ttd-nama">${namaKepalaDesa ? escapeHtml(namaKepalaDesa) : "( .......................................... )"}</p>
         </div>
+      </div>
+
+      <div class="catatan-cetak">
+        <p><b>Keterangan:</b></p>
+        <p>• Jumlah hari kerja ${bulanLabel} ${tahunLabel}: ${HARI_KERJA_BULAN_STATE} hari (sudah dikurangi hari libur/cuti bersama & hari di luar jadwal).</p>
+        <p>• Jumlah jam kerja resmi ${bulanLabel} ${tahunLabel}: ${formatDurasiJam(TOTAL_MENIT_KERJA_BULAN_STATE)}.</p>
+        <p>• <b>% Hadir</b> dihitung dari jumlah hari absen masuk dibandingkan jumlah hari kerja dalam sebulan.</p>
+        <p>• <b>% Jam Efektif</b> dihitung dari irisan jam absen masuk–pulang dengan jam kerja resmi jadwal. Datang lebih awal atau pulang lebih larut dari jadwal tidak menambah jam efektif; hari dengan absen masuk tanpa absen pulang dihitung 0 jam efektif.</p>
       </div>
     </body>
     </html>
