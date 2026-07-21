@@ -553,12 +553,17 @@ async function verifikasiWajah() {
     if (JENIS === "ijin") {
       stempel.style.color = "var(--emas-padi)";
       document.getElementById("labelStempel").textContent = "IJIN TERCATAT";
-      document.getElementById("pesanSukses").textContent = `Ijin ${labelAlasanIjin(ALASAN_IJIN)} untuk ${cocok.pegawai.nama} telah tercatat.`;
+      const pesanIjin = ALASAN_IJIN === "sakit"
+        ? `Semoga lekas sembuh, ${cocok.pegawai.nama}`
+        : `Selamat menjalankan tugas lain, ${cocok.pegawai.nama}`;
+      document.getElementById("pesanSukses").textContent = pesanIjin;
       catatanEl.classList.add("hidden");
     } else {
       stempel.style.color = JENIS === "masuk" ? "var(--ijo)" : "var(--nila)";
       document.getElementById("labelStempel").textContent = JENIS === "masuk" ? "HADIR MASUK" : "HADIR PULANG";
-      document.getElementById("pesanSukses").textContent = `Selamat bertugas, ${cocok.pegawai.nama}`;
+      document.getElementById("pesanSukses").textContent = JENIS === "masuk"
+        ? `Selamat bertugas, ${cocok.pegawai.nama}`
+        : `Selamat beristirahat, ${cocok.pegawai.nama}`;
 
       const kelompok = cariKelompokJadwal(CONFIG, waktuSkrg.hariIndex);
       const ket = kelompok ? hitungKeteranganWaktu(kelompok, JENIS, waktuSkrg) : null;
