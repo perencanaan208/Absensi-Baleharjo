@@ -152,6 +152,7 @@
       </div>
     </div>
     <p id="labelKamera" class="text-center text-sm" style="color:var(--tinta-lembut)">Posisikan wajah di dalam bingkai</p>
+    <button id="btnResetKedipan" onclick="resetPelacakKedipan()" class="hidden text-xs underline" style="color:var(--emas-padi)">Muat ulang deteksi kedipan</button>
     <button id="btnVerifikasi" onclick="verifikasiWajah()" disabled class="w-full max-w-xs rounded-2xl px-6 py-3.5 font-display text-base font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" style="background:var(--ijo-tua)">
       Verifikasi & Catat Absen
     </button>
@@ -182,7 +183,7 @@
 </footer>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=35"></script>
+<script src="assets/app.js?v=36"></script>
 <script>
 /* ============================ State halaman ============================ */
 let CONFIG = null;
@@ -468,6 +469,7 @@ async function mulaiKamera() {
   PELACAK_KEDIPAN = buatPelacakKedipan();
   KEDIPAN_TERDETEKSI = false;
   btnVerifikasi.disabled = true;
+  document.getElementById("btnResetKedipan").classList.add("hidden");
 
   try {
     await muatModelWajah();
@@ -490,7 +492,9 @@ async function loopDeteksiWajah() {
   const bingkai = document.getElementById("kameraBingkai");
   const label = document.getElementById("labelKamera");
   const btnVerifikasi = document.getElementById("btnVerifikasi");
+  const btnResetKedipan = document.getElementById("btnResetKedipan");
   let waktuMulaiTerdeteksi = null;
+  let waktuResetTerakhir = Date.now();
   while (LOOP_DETEKSI) {
     if (video.readyState === 4) {
       try {
@@ -506,20 +510,42 @@ async function loopDeteksiWajah() {
         }
 
         const lamaMenunggu = waktuMulaiTerdeteksi ? Date.now() - waktuMulaiTerdeteksi : 0;
+
+        // Kalau lebih dari 10 detik wajah terdeteksi tapi kedipan belum
+        // terbaca sama sekali (mis. karena baseline sempat "keliru" terekam
+        // dari frame awal yang kurang bagus), segarkan otomatis satu kali
+        // supaya pegawai tidak terjebak diam selamanya.
+        if (hasil && !KEDIPAN_TERDETEKSI && lamaMenunggu > 10000 && Date.now() - waktuResetTerakhir > 10000) {
+          PELACAK_KEDIPAN = buatPelacakKedipan();
+          waktuResetTerakhir = Date.now();
+        }
+
         if (!hasil) {
           label.textContent = "Posisikan wajah di dalam bingkai";
+          btnResetKedipan.classList.add("hidden");
         } else if (!KEDIPAN_TERDETEKSI) {
-          label.textContent = lamaMenunggu > 8000
-            ? "Belum terbaca — coba kedipkan mata lebih jelas & pastikan pencahayaan wajah cukup terang"
+          label.textContent = lamaMenunggu > 7000
+            ? "Belum terbaca — coba kedipkan mata lebih jelas & pastikan wajah tidak membelakangi cahaya terang"
             : "Wajah terdeteksi — kedipkan mata Anda secara alami";
+          btnResetKedipan.classList.toggle("hidden", lamaMenunggu <= 7000);
         } else {
           label.textContent = "✓ Wajah & keaslian terverifikasi — siap absen";
+          btnResetKedipan.classList.add("hidden");
         }
         btnVerifikasi.disabled = !(hasil && KEDIPAN_TERDETEKSI);
       } catch {}
     }
-    await new Promise(r => setTimeout(r, 80));
+    await new Promise(r => setTimeout(r, 100));
   }
+}
+
+// Dipanggil manual lewat tombol "Muat ulang deteksi kedipan" kalau pegawai
+// merasa pelacakan macet — mengosongkan baseline & status supaya mulai
+// mengamati dari kondisi bersih lagi, tanpa perlu menyalakan ulang kamera.
+function resetPelacakKedipan() {
+  PELACAK_KEDIPAN = buatPelacakKedipan();
+  document.getElementById("labelKamera").textContent = "Wajah terdeteksi — kedipkan mata Anda secara alami";
+  document.getElementById("btnResetKedipan").classList.add("hidden");
 }
 
 async function verifikasiWajah() {
