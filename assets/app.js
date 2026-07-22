@@ -282,12 +282,14 @@ async function deteksiSatuWajah(video) {
 // Versi ringan (tanpa menghitung descriptor 128-d yang berat) khusus dipakai
 // di loop pemantauan real-time (posisi wajah + kedipan mata). Descriptor
 // tetap dihitung sekali saja di deteksiSatuWajah() saat verifikasi akhir.
-// inputSize lebih kecil juga mempercepat inferensi supaya frame rate naik —
-// penting karena kedipan mata hanya berlangsung ~100-300ms, jadi makin
-// sering sampling makin besar peluang tertangkap.
+// inputSize 320 (sama seperti deteksi akhir) dipertahankan supaya presisi
+// titik kelopak mata cukup baik untuk melacak kedipan, terutama di kondisi
+// pencahayaan kurang ideal (backlight/kontra cahaya) — walau lebih berat
+// dari inputSize kecil, tetap jauh lebih cepat dari versi lengkap karena
+// tidak menghitung descriptor.
 async function deteksiWajahRingan(video) {
   const hasil = await faceapi
-    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
+    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
     .withFaceLandmarks();
   return hasil || null;
 }
@@ -324,10 +326,11 @@ function cocokkanWajah(descriptorBaru, daftarPegawai) {
 // bisa berbeda-beda. Solusinya pakai ambang ADAPTIF: sistem mempelajari
 // "baseline" EAR mata terbuka orang itu secara real-time, lalu mendeteksi
 // kedipan sebagai PENURUNAN RELATIF dari baseline tsb — bukan angka mutlak.
-const RASIO_TUTUP = 0.78; // EAR turun ke ≤78% baseline → dianggap mulai menutup
-const RASIO_BUKA = 0.92;  // EAR naik ke ≥92% baseline → dianggap sudah terbuka lagi
+const RASIO_TUTUP = 0.86; // EAR turun ke ≤86% baseline → dianggap mulai menutup
+const RASIO_BUKA = 0.93;  // EAR naik ke ≥93% baseline → dianggap sudah terbuka lagi
 const EAR_MIN_VALID = 0.08; // buang pembacaan EAR yang jelas tidak wajar (noise deteksi)
 const EAR_MAX_VALID = 0.6;
+const JUMLAH_SAMPEL_HALUS = 3; // rata-rata bergerak N pembacaan terakhir, meredam noise per-frame
 
 function jarakTitik(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
@@ -356,14 +359,21 @@ function hitungRataEAR(landmarks) {
 function buatPelacakKedipan() {
   let baseline = null;
   let status = "terbuka";
-  return function prosesFrameEAR(ear) {
-    if (ear == null || ear < EAR_MIN_VALID || ear > EAR_MAX_VALID) return false;
+  let riwayat = []; // buffer kecil untuk rata-rata bergerak (smoothing)
+
+  return function prosesFrameEAR(earMentah) {
+    if (earMentah == null || earMentah < EAR_MIN_VALID || earMentah > EAR_MAX_VALID) return false;
+
+    // Smoothing: pakai rata-rata beberapa pembacaan terakhir supaya satu
+    // frame noise (mis. landmark meleset sesaat) tidak salah dibaca sebagai
+    // kedipan, tanpa membuat kedipan asli (yang berlangsung beberapa frame)
+    // ikut hilang.
+    riwayat.push(earMentah);
+    if (riwayat.length > JUMLAH_SAMPEL_HALUS) riwayat.shift();
+    const ear = riwayat.reduce((a, b) => a + b, 0) / riwayat.length;
 
     if (baseline == null) { baseline = ear; return false; }
 
-    // Baseline naik cepat kalau ketemu EAR lebih besar (mata lebih terbuka
-    // dari yang tercatat), tapi turun perlahan supaya satu kedipan sendiri
-    // tidak langsung menggeser baseline ke bawah.
     if (status === "terbuka") {
       baseline = ear > baseline ? ear : baseline * 0.97 + ear * 0.03;
     }
