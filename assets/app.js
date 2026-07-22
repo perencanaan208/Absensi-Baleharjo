@@ -279,6 +279,19 @@ async function deteksiSatuWajah(video) {
   return hasil || null;
 }
 
+// Versi ringan (tanpa menghitung descriptor 128-d yang berat) khusus dipakai
+// di loop pemantauan real-time (posisi wajah + kedipan mata). Descriptor
+// tetap dihitung sekali saja di deteksiSatuWajah() saat verifikasi akhir.
+// inputSize lebih kecil juga mempercepat inferensi supaya frame rate naik —
+// penting karena kedipan mata hanya berlangsung ~100-300ms, jadi makin
+// sering sampling makin besar peluang tertangkap.
+async function deteksiWajahRingan(video) {
+  const hasil = await faceapi
+    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
+    .withFaceLandmarks();
+  return hasil || null;
+}
+
 function cocokkanWajah(descriptorBaru, daftarPegawai) {
   let terbaik = null;
   let jarakTerkecil = Infinity;
@@ -305,8 +318,16 @@ function cocokkanWajah(descriptorBaru, daftarPegawai) {
 // Eye Aspect Ratio (EAR): rasio tinggi vs lebar bentuk mata dari 6 titik
 // kontur mata. Nilainya turun tajam saat mata menutup, lalu naik lagi saat
 // terbuka — pola inilah yang dipakai untuk mendeteksi satu siklus kedipan.
-const AMBANG_EAR_TUTUP = 0.21; // di bawah ini dianggap mata sedang menutup
-const AMBANG_EAR_BUKA = 0.26;  // di atas ini dianggap mata sudah terbuka lagi
+// Ambang EAR TETAP (fixed) ternyata kurang cocok untuk selfie HP: sudut
+// kamera yang biasanya di bawah wajah membuat mata tampak lebih "sipit" di
+// mata kamera walau sedang terbuka normal, jadi nilai EAR terbuka tiap orang
+// bisa berbeda-beda. Solusinya pakai ambang ADAPTIF: sistem mempelajari
+// "baseline" EAR mata terbuka orang itu secara real-time, lalu mendeteksi
+// kedipan sebagai PENURUNAN RELATIF dari baseline tsb — bukan angka mutlak.
+const RASIO_TUTUP = 0.78; // EAR turun ke ≤78% baseline → dianggap mulai menutup
+const RASIO_BUKA = 0.92;  // EAR naik ke ≥92% baseline → dianggap sudah terbuka lagi
+const EAR_MIN_VALID = 0.08; // buang pembacaan EAR yang jelas tidak wajar (noise deteksi)
+const EAR_MAX_VALID = 0.6;
 
 function jarakTitik(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
@@ -332,20 +353,29 @@ function hitungRataEAR(landmarks) {
   return (earKiri + earKanan) / 2;
 }
 
-// Pelacak status kedipan lintas-frame. Dipanggil setiap frame video dengan
-// nilai EAR terbaru; mengembalikan true PERSIS pada frame saat satu siklus
-// kedipan (terbuka → menutup → terbuka) baru saja selesai terdeteksi.
-// Pakai ambang ganda (hysteresis) supaya noise kecil di sekitar satu ambang
-// tidak dibaca sebagai kedipan berulang.
 function buatPelacakKedipan() {
+  let baseline = null;
   let status = "terbuka";
   return function prosesFrameEAR(ear) {
-    if (ear == null) return false;
-    if (status === "terbuka" && ear < AMBANG_EAR_TUTUP) {
+    if (ear == null || ear < EAR_MIN_VALID || ear > EAR_MAX_VALID) return false;
+
+    if (baseline == null) { baseline = ear; return false; }
+
+    // Baseline naik cepat kalau ketemu EAR lebih besar (mata lebih terbuka
+    // dari yang tercatat), tapi turun perlahan supaya satu kedipan sendiri
+    // tidak langsung menggeser baseline ke bawah.
+    if (status === "terbuka") {
+      baseline = ear > baseline ? ear : baseline * 0.97 + ear * 0.03;
+    }
+
+    const ambangTutup = baseline * RASIO_TUTUP;
+    const ambangBuka = baseline * RASIO_BUKA;
+
+    if (status === "terbuka" && ear < ambangTutup) {
       status = "menutup";
       return false;
     }
-    if (status === "menutup" && ear > AMBANG_EAR_BUKA) {
+    if (status === "menutup" && ear > ambangBuka) {
       status = "terbuka";
       return true; // satu siklus kedipan lengkap terdeteksi
     }
