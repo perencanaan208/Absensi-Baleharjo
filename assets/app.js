@@ -393,6 +393,79 @@ function buatPelacakKedipan() {
   };
 }
 
+/* --------------------- Liveness alternatif: geser kepala --------------------- */
+// Opsi cadangan kalau kedipan mata sulit terbaca (mis. pencahayaan
+// backlight yang membuat kelopak mata kurang kontras). Catatan keamanan:
+// ini SEDIKIT LEBIH LEMAH dari deteksi kedipan — foto cetak yang dipegang
+// tangan secara teori bisa dimiringkan untuk meniru pola geser kepala,
+// sedangkan foto tidak mungkin "berkedip" apa pun yang dilakukan pelaku.
+// Karena itu opsi ini hanya ditawarkan sebagai jalan keluar setelah
+// kedipan gagal terdeteksi beberapa saat, bukan pilihan utama.
+//
+// Cara kerja: melacak posisi ujung hidung relatif terhadap titik tengah
+// kedua mata, dinormalisasi dengan jarak antar-mata (supaya tidak
+// terpengaruh jarak wajah ke kamera). Saat kepala menoleh ke kiri/kanan,
+// posisi relatif ini bergeser cukup jauh dari posisi tengah awal, lalu
+// diminta kembali ke tengah — pola "menoleh lalu kembali" inilah yang
+// dianggap satu gestur geser kepala.
+const RASIO_AMBANG_MENOLEH = 0.20; // pergeseran ≥20% jarak antar-mata dari titik tengah awal
+const RASIO_AMBANG_KEMBALI = 0.09; // harus kembali ke ≤9% dari titik tengah untuk dianggap selesai
+const JUMLAH_KALIBRASI_AWAL = 5;   // jumlah frame pertama dipakai menetapkan posisi "tengah"
+
+// Mengembalikan {offsetX, skala} — offsetX = jarak horizontal ujung hidung
+// dari titik tengah kedua mata (piksel, bisa negatif/positif tergantung
+// arah), skala = jarak antar-mata (piksel, dipakai untuk normalisasi.
+function hitungPosisiKepala(landmarks) {
+  if (!landmarks) return null;
+  const mataKiri = landmarks.getLeftEye();
+  const mataKanan = landmarks.getRightEye();
+  const hidung = landmarks.getNose();
+  if (!mataKiri?.length || !mataKanan?.length || !hidung?.length) return null;
+
+  const rataX = (pts) => pts.reduce((s, p) => s + p.x, 0) / pts.length;
+  const rataY = (pts) => pts.reduce((s, p) => s + p.y, 0) / pts.length;
+  const tengahMataKiri = { x: rataX(mataKiri), y: rataY(mataKiri) };
+  const tengahMataKanan = { x: rataX(mataKanan), y: rataY(mataKanan) };
+  const titikTengahMata = { x: (tengahMataKiri.x + tengahMataKanan.x) / 2 };
+  const ujungHidung = hidung[Math.min(6, hidung.length - 1)]; // titik hidung bagian bawah/ujung
+
+  const skala = jarakTitik(tengahMataKiri, tengahMataKanan);
+  if (!skala) return null;
+
+  return { offsetX: ujungHidung.x - titikTengahMata.x, skala };
+}
+
+function buatPelacakGeserKepala() {
+  let baselineRasio = null;
+  let sampelKalibrasi = [];
+  let status = "tengah";
+
+  return function prosesFramePosisi(posisi) {
+    if (!posisi) return false;
+    const rasio = posisi.offsetX / posisi.skala;
+
+    if (baselineRasio == null) {
+      sampelKalibrasi.push(rasio);
+      if (sampelKalibrasi.length >= JUMLAH_KALIBRASI_AWAL) {
+        baselineRasio = sampelKalibrasi.reduce((a, b) => a + b, 0) / sampelKalibrasi.length;
+      }
+      return false;
+    }
+
+    const deviasi = rasio - baselineRasio;
+
+    if (status === "tengah" && Math.abs(deviasi) > RASIO_AMBANG_MENOLEH) {
+      status = "menoleh";
+      return false;
+    }
+    if (status === "menoleh" && Math.abs(deviasi) < RASIO_AMBANG_KEMBALI) {
+      status = "tengah";
+      return true; // gestur menoleh lalu kembali ke tengah selesai
+    }
+    return false;
+  };
+}
+
 /* ----------------------------- Kamera helper ----------------------------- */
 
 async function nyalakanKamera(videoEl) {
