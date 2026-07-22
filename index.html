@@ -182,7 +182,7 @@
 </footer>
 
 <script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=34"></script>
+<script src="assets/app.js?v=35"></script>
 <script>
 /* ============================ State halaman ============================ */
 let CONFIG = null;
@@ -490,28 +490,35 @@ async function loopDeteksiWajah() {
   const bingkai = document.getElementById("kameraBingkai");
   const label = document.getElementById("labelKamera");
   const btnVerifikasi = document.getElementById("btnVerifikasi");
+  let waktuMulaiTerdeteksi = null;
   while (LOOP_DETEKSI) {
     if (video.readyState === 4) {
       try {
-        const hasil = await deteksiSatuWajah(video);
+        const hasil = await deteksiWajahRingan(video);
         bingkai.classList.toggle("terdeteksi", !!hasil);
 
         if (hasil && !KEDIPAN_TERDETEKSI) {
+          if (!waktuMulaiTerdeteksi) waktuMulaiTerdeteksi = Date.now();
           const ear = hitungRataEAR(hasil.landmarks);
           if (PELACAK_KEDIPAN(ear)) KEDIPAN_TERDETEKSI = true;
+        } else if (!hasil) {
+          waktuMulaiTerdeteksi = null;
         }
 
+        const lamaMenunggu = waktuMulaiTerdeteksi ? Date.now() - waktuMulaiTerdeteksi : 0;
         if (!hasil) {
           label.textContent = "Posisikan wajah di dalam bingkai";
         } else if (!KEDIPAN_TERDETEKSI) {
-          label.textContent = "Wajah terdeteksi — kedipkan mata Anda secara alami";
+          label.textContent = lamaMenunggu > 8000
+            ? "Belum terbaca — coba kedipkan mata lebih jelas & pastikan pencahayaan wajah cukup terang"
+            : "Wajah terdeteksi — kedipkan mata Anda secara alami";
         } else {
           label.textContent = "✓ Wajah & keaslian terverifikasi — siap absen";
         }
         btnVerifikasi.disabled = !(hasil && KEDIPAN_TERDETEKSI);
       } catch {}
     }
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 80));
   }
 }
 
