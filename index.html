@@ -152,11 +152,7 @@
       </div>
     </div>
     <p id="labelKamera" class="text-center text-sm" style="color:var(--tinta-lembut)">Posisikan wajah di dalam bingkai</p>
-    <div id="bantuanLiveness" class="hidden flex flex-col items-center gap-1">
-      <button id="btnResetKedipan" onclick="resetPelacakKedipan()" class="text-xs underline" style="color:var(--emas-padi)">Muat ulang deteksi kedipan</button>
-      <button id="btnGantiModeLiveness" onclick="gantiModeLiveness()" class="text-xs underline" style="color:var(--emas-padi)">Kesulitan? Coba geser kepala kiri-kanan saja</button>
-    </div>
-    <button id="btnVerifikasi" onclick="verifikasiWajah()" disabled class="w-full max-w-xs rounded-2xl px-6 py-3.5 font-display text-base font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" style="background:var(--ijo-tua)">
+    <button id="btnVerifikasi" onclick="verifikasiWajah()" class="w-full max-w-xs rounded-2xl px-6 py-3.5 font-display text-base font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98]" style="background:var(--ijo-tua)">
       Verifikasi & Catat Absen
     </button>
     <button onclick="kembaliAwal()" class="text-sm underline" style="color:var(--tinta-lembut)">Batal</button>
@@ -196,10 +192,6 @@ let LOKASI = null;
 let JARAK = null;
 let STREAM = null;
 let LOOP_DETEKSI = false;
-let PELACAK_KEDIPAN = null;
-let KEDIPAN_TERDETEKSI = false;
-let MODE_LIVENESS = "kedipan"; // "kedipan" | "geser_kepala"
-let PELACAK_GESER = null;
 let ALASAN_IJIN = null;
 let KETERANGAN_IJIN = "";
 
@@ -467,16 +459,9 @@ async function mulaiKamera() {
   const bingkai = document.getElementById("kameraBingkai");
   const statusEl = document.getElementById("kameraStatus");
   const video = document.getElementById("video");
-  const btnVerifikasi = document.getElementById("btnVerifikasi");
   bingkai.className = "kamera-bingkai";
   statusEl.style.display = "flex";
   statusEl.innerHTML = '<div class="spinner"></div><p class="font-mono text-xs">Menyiapkan kamera & model wajah…</p>';
-  PELACAK_KEDIPAN = buatPelacakKedipan();
-  PELACAK_GESER = buatPelacakGeserKepala();
-  MODE_LIVENESS = "kedipan";
-  KEDIPAN_TERDETEKSI = false;
-  btnVerifikasi.disabled = true;
-  document.getElementById("bantuanLiveness").classList.add("hidden");
 
   try {
     await muatModelWajah();
@@ -498,99 +483,19 @@ async function loopDeteksiWajah() {
   const video = document.getElementById("video");
   const bingkai = document.getElementById("kameraBingkai");
   const label = document.getElementById("labelKamera");
-  const btnVerifikasi = document.getElementById("btnVerifikasi");
-  const bantuanLiveness = document.getElementById("bantuanLiveness");
-  const btnResetKedipan = document.getElementById("btnResetKedipan");
-  const btnGantiModeLiveness = document.getElementById("btnGantiModeLiveness");
-  let waktuMulaiTerdeteksi = null;
-  let waktuResetTerakhir = Date.now();
-
   while (LOOP_DETEKSI) {
     if (video.readyState === 4) {
       try {
         const hasil = await deteksiWajahRingan(video);
         bingkai.classList.toggle("terdeteksi", !!hasil);
-
-        if (hasil && !KEDIPAN_TERDETEKSI) {
-          if (!waktuMulaiTerdeteksi) waktuMulaiTerdeteksi = Date.now();
-          if (MODE_LIVENESS === "kedipan") {
-            const ear = hitungRataEAR(hasil.landmarks);
-            if (PELACAK_KEDIPAN(ear)) KEDIPAN_TERDETEKSI = true;
-          } else {
-            const posisi = hitungPosisiKepala(hasil.landmarks);
-            if (PELACAK_GESER(posisi)) KEDIPAN_TERDETEKSI = true;
-          }
-        } else if (!hasil) {
-          waktuMulaiTerdeteksi = null;
-        }
-
-        const lamaMenunggu = waktuMulaiTerdeteksi ? Date.now() - waktuMulaiTerdeteksi : 0;
-
-        // Kalau lebih dari 10 detik wajah terdeteksi tapi kedipan belum
-        // terbaca sama sekali di mode kedipan (mis. karena baseline sempat
-        // "keliru" terekam dari frame awal yang kurang bagus), segarkan
-        // otomatis satu kali supaya pegawai tidak terjebak diam selamanya.
-        if (MODE_LIVENESS === "kedipan" && hasil && !KEDIPAN_TERDETEKSI && lamaMenunggu > 10000 && Date.now() - waktuResetTerakhir > 10000) {
-          PELACAK_KEDIPAN = buatPelacakKedipan();
-          waktuResetTerakhir = Date.now();
-        }
-
-        if (!hasil) {
-          label.textContent = "Posisikan wajah di dalam bingkai";
-          bantuanLiveness.classList.add("hidden");
-        } else if (!KEDIPAN_TERDETEKSI) {
-          if (MODE_LIVENESS === "kedipan") {
-            label.textContent = lamaMenunggu > 7000
-              ? "Belum terbaca — coba kedipkan mata lebih jelas & pastikan wajah tidak membelakangi cahaya terang"
-              : "Wajah terdeteksi — kedipkan mata Anda secara alami";
-          } else {
-            label.textContent = "Geser kepala Anda perlahan ke kiri atau kanan, lalu kembali menghadap kamera";
-          }
-          bantuanLiveness.classList.toggle("hidden", lamaMenunggu <= 7000);
-          btnResetKedipan.classList.toggle("hidden", MODE_LIVENESS !== "kedipan");
-          btnGantiModeLiveness.textContent = MODE_LIVENESS === "kedipan"
-            ? "Kesulitan? Coba geser kepala kiri-kanan saja"
-            : "Kembali ke deteksi kedipan mata";
-        } else {
-          label.textContent = "✓ Wajah & keaslian terverifikasi — siap absen";
-          bantuanLiveness.classList.add("hidden");
-        }
-        btnVerifikasi.disabled = !(hasil && KEDIPAN_TERDETEKSI);
+        label.textContent = hasil ? "Wajah terdeteksi — siap diverifikasi" : "Posisikan wajah di dalam bingkai";
       } catch {}
     }
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 200));
   }
-}
-
-// Dipanggil manual lewat tombol "Muat ulang deteksi kedipan" kalau pegawai
-// merasa pelacakan macet — mengosongkan baseline & status supaya mulai
-// mengamati dari kondisi bersih lagi, tanpa perlu menyalakan ulang kamera.
-function resetPelacakKedipan() {
-  PELACAK_KEDIPAN = buatPelacakKedipan();
-  document.getElementById("labelKamera").textContent = "Wajah terdeteksi — kedipkan mata Anda secara alami";
-  document.getElementById("bantuanLiveness").classList.add("hidden");
-}
-
-// Beralih antara mode liveness "kedipan mata" dan "geser kepala". Dipanggil
-// dari tombol bantuan yang muncul kalau mode kedipan sulit terbaca (mis.
-// pencahayaan backlight). Lihat catatan keamanan di app.js: geser kepala
-// sedikit lebih lemah terhadap foto cetak yang dimiringkan tangan, jadi ini
-// hanya jalan keluar, bukan pengganti default.
-function gantiModeLiveness() {
-  MODE_LIVENESS = MODE_LIVENESS === "kedipan" ? "geser_kepala" : "kedipan";
-  PELACAK_KEDIPAN = buatPelacakKedipan();
-  PELACAK_GESER = buatPelacakGeserKepala();
-  document.getElementById("labelKamera").textContent = MODE_LIVENESS === "kedipan"
-    ? "Wajah terdeteksi — kedipkan mata Anda secara alami"
-    : "Geser kepala Anda perlahan ke kiri atau kanan, lalu kembali menghadap kamera";
-  document.getElementById("bantuanLiveness").classList.add("hidden");
 }
 
 async function verifikasiWajah() {
-  if (!KEDIPAN_TERDETEKSI) {
-    // Jaga-jaga kalau tombol sempat tertekan sebelum liveness check lolos.
-    return;
-  }
   LOOP_DETEKSI = false;
   document.getElementById("teksMemuat").textContent = JENIS === "ijin" ? "Mencocokkan wajah & mencatat ijin…" : "Mencocokkan wajah & mencatat absen…";
   tampilkan("stateMemuat");
