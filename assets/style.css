@@ -82,10 +82,10 @@ input, select, textarea {
 .kamera-bingkai {
   position: relative;
   width: 100%;
-  max-width: 320px;
-  aspect-ratio: 1 / 1;
+  max-width: 280px;
+  aspect-ratio: 4 / 5;
   margin: 0 auto;
-  border-radius: 2rem;
+  border-radius: 50%;
   overflow: hidden;
   border: 4px solid var(--ijo);
   background: var(--ijo-tua);
@@ -97,7 +97,7 @@ input, select, textarea {
   width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);
 }
 .kamera-overlay {
-  position: absolute; inset: 24px; border-radius: 1.5rem;
+  position: absolute; inset: 14%; border-radius: 50%;
   border: 2px dashed rgba(255,255,255,0.5);
   pointer-events: none; transition: all 0.2s;
 }
@@ -112,6 +112,39 @@ input, select, textarea {
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Cincin progres verifikasi: melingkari bingkai oval, mulai dari titik
+   jam 12 (atas) lalu menyapu SEARAH JARUM JAM (transform rotate(-90deg)
+   menggeser titik awal jalur SVG dari jam 3 ke jam 12 — trik standar untuk
+   membuat progress ring mulai dari atas). Warna hijau sesuai permintaan;
+   saat sapuan kembali bertemu titik atas (lingkaran penuh), itu menandai
+   proses verifikasi selesai. */
+.kamera-ring {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  z-index: 5;
+}
+.kamera-ring.aktif { opacity: 1; }
+.kamera-ring .jalur-ring {
+  fill: none;
+  stroke: var(--ijo);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+.kamera-ring.berputar .jalur-ring {
+  animation: ring-sweep 1.7s linear forwards;
+}
+@keyframes ring-sweep {
+  from { stroke-dashoffset: 318.6; }
+  to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kamera-ring.berputar .jalur-ring { animation: none; stroke-dashoffset: 0; }
+}
 
 /* ==========================================================================
    PERBAIKAN RESPONSIF LINTAS TIPE HP
@@ -173,13 +206,15 @@ input, select, textarea {
   height: clamp(9rem, 34vw, 10rem);
 }
 
-/* Kamera: lebar mengikuti layar (bukan cuma dibatasi 320px tetap), termasuk
-   di HP sangat sempit atau saat orientasi landscape pada HP pendek. */
+/* Kamera: lebar mengikuti layar (bukan cuma dibatasi 280px tetap), termasuk
+   di HP sangat sempit atau saat orientasi landscape pada HP pendek. Karena
+   sekarang bentuknya oval (4:5, lebih tinggi dari lebar), pembatas lebar di
+   bawah ini otomatis membuat tingginya proporsional (tinggi = lebar × 1.25). */
 .kamera-bingkai {
-  width: min(100%, 320px, 82vw);
+  width: min(100%, 280px, 82vw);
 }
 .kamera-overlay {
-  inset: clamp(14px, 7%, 24px);
+  inset: clamp(10px, 12%, 22px);
 }
 
 /* HP dalam mode landscape & tinggi layar pendek: rapatkan padding vertikal
@@ -187,7 +222,7 @@ input, select, textarea {
 @media (max-height: 480px) and (orientation: landscape) {
   .app-header { padding-top: 0.75rem; padding-bottom: 0.5rem; }
   #stateMemuatAwal { padding-top: 2rem; padding-bottom: 2rem; }
-  .kamera-bingkai { width: min(220px, 40vh); }
+  .kamera-bingkai { width: min(180px, 32vh); }
   #stateSukses { padding-top: 1rem; padding-bottom: 1rem; gap: 1.25rem !important; }
 }
 
@@ -199,5 +234,5 @@ input, select, textarea {
 
 /* HP/tablet lebar (>480px): batasi kamera agar tidak jadi raksasa. */
 @media (min-width: 480px) {
-  .kamera-bingkai { width: 320px; }
+  .kamera-bingkai { width: 280px; }
 }
