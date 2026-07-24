@@ -132,14 +132,12 @@ input, select, textarea {
   stroke: var(--ijo);
   stroke-width: 3.5;
   stroke-linecap: round;
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
 }
 .kamera-ring.berputar .jalur-ring {
   animation: ring-sweep 1.7s linear forwards;
 }
 @keyframes ring-sweep {
-  from { stroke-dashoffset: 318.6; }
+  from { stroke-dashoffset: 100; }
   to { stroke-dashoffset: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
