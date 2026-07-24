@@ -156,8 +156,8 @@
       </div>
     </div>
     <p id="labelKamera" class="text-center text-sm" style="color:var(--tinta-lembut)">Posisikan wajah di dalam bingkai</p>
-    <button id="btnVerifikasi" onclick="verifikasiWajah()" class="w-full max-w-xs rounded-2xl px-6 py-3.5 font-display text-base font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98]" style="background:var(--ijo-tua)">
-      Verifikasi & Catat Absen
+    <button id="btnCatatAbsen" onclick="catatAbsenSekarang()" disabled class="hidden w-full max-w-xs rounded-2xl px-6 py-3.5 font-display text-base font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" style="background:var(--ijo-tua)">
+      Catat Absen
     </button>
     <button id="btnBatalWajah" onclick="kembaliAwal()" class="text-sm underline disabled:opacity-40 disabled:cursor-not-allowed" style="color:var(--tinta-lembut)">Batal</button>
   </div>
@@ -196,6 +196,7 @@ let LOKASI = null;
 let JARAK = null;
 let STREAM = null;
 let LOOP_DETEKSI = false;
+let HASIL_VERIFIKASI = null; // { cocok, statusHariIni } — diisi setelah verifikasi otomatis berhasil, dipakai saat tombol "Catat Absen" ditekan
 let ALASAN_IJIN = null;
 let KETERANGAN_IJIN = "";
 
@@ -468,8 +469,12 @@ async function mulaiKamera() {
   statusEl.innerHTML = '<div class="spinner"></div><p class="font-mono text-xs">Menyiapkan kamera & model wajah…</p>';
   const ring = document.getElementById("ringVerifikasi");
   ring.classList.remove("aktif", "berputar");
-  document.getElementById("btnVerifikasi").disabled = false;
   document.getElementById("btnBatalWajah").disabled = false;
+  const btnCatat = document.getElementById("btnCatatAbsen");
+  btnCatat.classList.add("hidden");
+  btnCatat.disabled = true;
+  btnCatat.textContent = "Catat Absen";
+  HASIL_VERIFIKASI = null;
 
   try {
     await muatModelWajah();
@@ -491,31 +496,49 @@ async function loopDeteksiWajah() {
   const video = document.getElementById("video");
   const bingkai = document.getElementById("kameraBingkai");
   const label = document.getElementById("labelKamera");
+  const AMBANG_STABIL_MS = 900; // wajah harus terdeteksi terus-menerus sekian ms
+  // sebelum dianggap "siap", supaya tidak salah pemicu karena gerakan
+  // sekilas (mis. baru mengangkat HP, atau ada orang lewat di belakang).
+  let waktuMulaiStabil = null;
+
   while (LOOP_DETEKSI) {
     if (video.readyState === 4) {
       try {
         const hasil = await deteksiWajahRingan(video);
         bingkai.classList.toggle("terdeteksi", !!hasil);
-        label.textContent = hasil ? "Wajah terdeteksi — siap diverifikasi" : "Posisikan wajah di dalam bingkai";
+
+        if (!hasil) {
+          waktuMulaiStabil = null;
+          label.textContent = "Posisikan wajah di dalam bingkai";
+        } else {
+          if (!waktuMulaiStabil) waktuMulaiStabil = Date.now();
+          const stabilMs = Date.now() - waktuMulaiStabil;
+          if (stabilMs < AMBANG_STABIL_MS) {
+            label.textContent = "Wajah terdeteksi — tetap diam sejenak…";
+          } else {
+            label.textContent = "Memverifikasi otomatis…";
+            verifikasiOtomatis(); // identitas & validitas dicek otomatis; tombol "Catat Absen" muncul setelah lolos
+            break; // loop dihentikan di sini; verifikasiOtomatis() ambil alih dari sini
+          }
+        }
       } catch {}
     }
     await new Promise(r => setTimeout(r, 200));
   }
 }
 
-async function verifikasiWajah() {
+async function verifikasiOtomatis() {
   LOOP_DETEKSI = false;
   const ring = document.getElementById("ringVerifikasi");
-  const btnVerifikasi = document.getElementById("btnVerifikasi");
   const label = document.getElementById("labelKamera");
+  const btnCatat = document.getElementById("btnCatatAbsen");
   label.textContent = "Memverifikasi wajah…";
-  btnVerifikasi.disabled = true;
   document.getElementById("btnBatalWajah").disabled = true;
   ring.classList.add("aktif", "berputar");
   // Cincin menyapu penuh dalam 1.7 detik (selaras dengan durasi animasi CSS
-  // ring-sweep). Di jalur SUKSES kita tunggu sapuan ini selesai dulu sebelum
-  // pindah ke layar berhasil, supaya "cincin hijau bertemu titik atas lagi"
-  // benar-benar terlihat menandai verifikasi selesai — bukan cuma hiasan.
+  // ring-sweep). Kita tunggu sapuan ini selesai dulu sebelum menampilkan
+  // tombol "Catat Absen", supaya "cincin hijau bertemu titik atas lagi"
+  // benar-benar terlihat menandai identitas terverifikasi — bukan cuma hiasan.
   const tungguSapuanCincin = new Promise((resolve) => setTimeout(resolve, 1700));
   try {
     const video = document.getElementById("video");
@@ -573,6 +596,30 @@ async function verifikasiWajah() {
       return;
     }
 
+    // Identitas & validitas sudah terkonfirmasi otomatis lewat cincin hijau.
+    // Simpan hasilnya, lalu serahkan langkah terakhir (mencatat ke server)
+    // ke tombol "Catat Absen" — supaya pegawai tetap punya kendali kapan
+    // datanya benar-benar disimpan.
+    HASIL_VERIFIKASI = { cocok, statusHariIni };
+    label.textContent = `✓ Wajah terverifikasi: ${cocok.pegawai.nama}`;
+    btnCatat.classList.remove("hidden");
+    btnCatat.disabled = false;
+  } catch (err) {
+    matikanKamera(STREAM);
+    tampilkanGagal("Verifikasi tidak berhasil", err.message || "Terjadi kesalahan saat verifikasi wajah.", () => mulaiKamera());
+  }
+}
+
+async function catatAbsenSekarang() {
+  if (!HASIL_VERIFIKASI) return;
+  const { cocok, statusHariIni } = HASIL_VERIFIKASI;
+  const btnCatat = document.getElementById("btnCatatAbsen");
+  const label = document.getElementById("labelKamera");
+  btnCatat.disabled = true;
+  btnCatat.textContent = "Menyimpan…";
+  label.textContent = "Menyimpan data absen…";
+
+  try {
     if (JENIS === "ijin") {
       await api.catatAbsen({
         pegawaiId: cocok.pegawai.id,
@@ -592,10 +639,6 @@ async function verifikasiWajah() {
         skorKecocokan: Number(cocok.jarak.toFixed(3)),
       });
     }
-
-    // Cincin hijau sudah/akan menyelesaikan satu putaran penuh (atas → kanan
-    // → bawah → kiri → atas lagi) tepat sebelum kita lanjut ke layar sukses.
-    await tungguSapuanCincin;
 
     matikanKamera(STREAM);
     const waktuSkrg = waktuJakartaSaatIni();
@@ -657,7 +700,7 @@ async function verifikasiWajah() {
     tampilkan("stateSukses");
   } catch (err) {
     matikanKamera(STREAM);
-    tampilkanGagal("Verifikasi tidak berhasil", err.message || "Terjadi kesalahan saat mencatat absensi.", () => mulaiKamera());
+    tampilkanGagal("Gagal mencatat absen", err.message || "Terjadi kesalahan saat mencatat absensi.", () => mulaiKamera());
   }
 }
 
