@@ -146,6 +146,9 @@
     <div id="kameraBingkai" class="kamera-bingkai">
       <video id="video" autoplay playsinline muted></video>
       <div class="kamera-overlay"></div>
+      <svg id="ringVerifikasi" class="kamera-ring" viewBox="0 0 100 125" preserveAspectRatio="xMidYMid meet">
+        <ellipse class="jalur-ring" cx="50" cy="62.5" rx="44" ry="57" stroke-dasharray="318.6" stroke-dashoffset="318.6"></ellipse>
+      </svg>
       <div id="kameraStatus" class="kamera-status" style="background:var(--ijo-tua)">
         <div class="spinner"></div>
         <p class="font-mono text-xs">Menyiapkan kamera & model wajah…</p>
@@ -155,7 +158,7 @@
     <button id="btnVerifikasi" onclick="verifikasiWajah()" class="w-full max-w-xs rounded-2xl px-6 py-3.5 font-display text-base font-semibold text-[var(--kertas)] shadow-lg transition active:scale-[0.98]" style="background:var(--ijo-tua)">
       Verifikasi & Catat Absen
     </button>
-    <button onclick="kembaliAwal()" class="text-sm underline" style="color:var(--tinta-lembut)">Batal</button>
+    <button id="btnBatalWajah" onclick="kembaliAwal()" class="text-sm underline disabled:opacity-40 disabled:cursor-not-allowed" style="color:var(--tinta-lembut)">Batal</button>
   </div>
 
   <!-- STATE: sukses -->
@@ -462,6 +465,10 @@ async function mulaiKamera() {
   bingkai.className = "kamera-bingkai";
   statusEl.style.display = "flex";
   statusEl.innerHTML = '<div class="spinner"></div><p class="font-mono text-xs">Menyiapkan kamera & model wajah…</p>';
+  const ring = document.getElementById("ringVerifikasi");
+  ring.classList.remove("aktif", "berputar");
+  document.getElementById("btnVerifikasi").disabled = false;
+  document.getElementById("btnBatalWajah").disabled = false;
 
   try {
     await muatModelWajah();
@@ -497,8 +504,18 @@ async function loopDeteksiWajah() {
 
 async function verifikasiWajah() {
   LOOP_DETEKSI = false;
-  document.getElementById("teksMemuat").textContent = JENIS === "ijin" ? "Mencocokkan wajah & mencatat ijin…" : "Mencocokkan wajah & mencatat absen…";
-  tampilkan("stateMemuat");
+  const ring = document.getElementById("ringVerifikasi");
+  const btnVerifikasi = document.getElementById("btnVerifikasi");
+  const label = document.getElementById("labelKamera");
+  label.textContent = "Memverifikasi wajah…";
+  btnVerifikasi.disabled = true;
+  document.getElementById("btnBatalWajah").disabled = true;
+  ring.classList.add("aktif", "berputar");
+  // Cincin menyapu penuh dalam 1.7 detik (selaras dengan durasi animasi CSS
+  // ring-sweep). Di jalur SUKSES kita tunggu sapuan ini selesai dulu sebelum
+  // pindah ke layar berhasil, supaya "cincin hijau bertemu titik atas lagi"
+  // benar-benar terlihat menandai verifikasi selesai — bukan cuma hiasan.
+  const tungguSapuanCincin = new Promise((resolve) => setTimeout(resolve, 1700));
   try {
     const video = document.getElementById("video");
     const hasilDeteksi = await deteksiSatuWajah(video);
@@ -574,6 +591,10 @@ async function verifikasiWajah() {
         skorKecocokan: Number(cocok.jarak.toFixed(3)),
       });
     }
+
+    // Cincin hijau sudah/akan menyelesaikan satu putaran penuh (atas → kanan
+    // → bawah → kiri → atas lagi) tepat sebelum kita lanjut ke layar sukses.
+    await tungguSapuanCincin;
 
     matikanKamera(STREAM);
     const waktuSkrg = waktuJakartaSaatIni();
