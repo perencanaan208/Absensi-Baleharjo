@@ -1619,7 +1619,11 @@ async function muatDashboard() {
     const idMasukHariIni = new Set(rekapHariIni.filter(r => r.jenis === "masuk").map(r => r.pegawaiId));
     const idPulangHariIni = new Set(rekapHariIni.filter(r => r.jenis === "pulang").map(r => r.pegawaiId));
     const idIjinHariIni = new Set(rekapHariIni.filter(r => r.jenis === "ijin").map(r => r.pegawaiId));
+    const recMasukHariIni = new Map(rekapHariIni.filter(r => r.jenis === "masuk").map(r => [r.pegawaiId, r]));
+    const recPulangHariIni = new Map(rekapHariIni.filter(r => r.jenis === "pulang").map(r => [r.pegawaiId, r]));
+    const recIjinHariIni = new Map(rekapHariIni.filter(r => r.jenis === "ijin").map(r => [r.pegawaiId, r]));
     const belumAbsenHariIni = daftarPegawai.filter(p => !idMasukHariIni.has(p.id) && !idIjinHariIni.has(p.id));
+    const sudahAbsenHariIni = daftarPegawai.filter(p => idMasukHariIni.has(p.id) || idIjinHariIni.has(p.id));
 
     // --- Performa BULAN BERJALAN per pegawai (logika sama dengan Laporan Bulanan) ---
     const perPegawai = new Map();
@@ -1707,11 +1711,30 @@ async function muatDashboard() {
         </div>
 
         <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
-          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Kehadiran per Pegawai — ${NAMA_BULAN[bulan - 1]} ${tahun}</h3>
-          ${[...performa].sort((a, b) => a.persenHadir - b.persenHadir)
-            .map(x => barChart(escapeHtml(x.nama), x.persenHadir, 100, `${x.persenHadir}%`, warnaPersen(x.persenHadir)))
-            .join("")}
+          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Sudah Absen / Ijin Hari Ini</h3>
+          ${sudahAbsenHariIni.length === 0
+            ? `<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada pegawai yang absen atau ijin hari ini.</p>`
+            : `<ul class="space-y-1.5 text-sm">${sudahAbsenHariIni.map(p => {
+                let keterangan;
+                if (recIjinHariIni.has(p.id)) {
+                  const ij = recIjinHariIni.get(p.id);
+                  keterangan = `<span class="font-mono text-xs font-semibold" style="color:var(--emas-padi)">📋 Ijin ${escapeHtml(LABEL_ALASAN_IJIN[ij.alasan] || ij.alasan || "")}</span>`;
+                } else {
+                  const jamMasuk = recMasukHariIni.get(p.id)?.jam || "-";
+                  const sudahPulang = recPulangHariIni.has(p.id);
+                  keterangan = `<span class="font-mono text-xs font-semibold" style="color:var(--ijo-tua)">✅ Masuk ${escapeHtml(jamMasuk)}${sudahPulang ? ` · Pulang ${escapeHtml(recPulangHariIni.get(p.id).jam)}` : ""}</span>`;
+                }
+                return `<li class="flex items-center justify-between gap-2"><span>${escapeHtml(p.nama)}</span>${keterangan}</li>`;
+              }).join("")}</ul>`
+          }
         </div>
+      </div>
+
+      <div class="mb-6 rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+        <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Kehadiran per Pegawai — ${NAMA_BULAN[bulan - 1]} ${tahun}</h3>
+        ${[...performa].sort((a, b) => a.persenHadir - b.persenHadir)
+          .map(x => barChart(escapeHtml(x.nama), x.persenHadir, 100, `${x.persenHadir}%`, warnaPersen(x.persenHadir)))
+          .join("")}
       </div>
 
       <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
