@@ -1664,6 +1664,24 @@ async function muatDashboard() {
         <p class="mt-1 font-display text-2xl font-semibold" style="color:${warna || "var(--ijo-tua)"}">${nilai}</p>
       </div>`;
 
+    // Diagram batang horizontal ringan (tanpa library), dipakai untuk 3
+    // metrik ringkasan bulan berjalan di bawah. "nilai" dan "nilaiMaks"
+    // menentukan panjang batang (0-100%); "tampilan" adalah teks yang
+    // ditulis di kanan (boleh format berbeda dari nilai murni, mis. "257 hari").
+    const barChart = (label, nilai, nilaiMaks, tampilan, warna) => {
+      const persen = nilaiMaks > 0 ? Math.max(0, Math.min(100, (nilai / nilaiMaks) * 100)) : 0;
+      return `
+        <div class="mb-4 last:mb-0">
+          <div class="mb-1.5 flex items-center justify-between text-sm">
+            <span style="color:var(--tinta-lembut)">${label}</span>
+            <span class="font-mono font-semibold" style="color:${warna}">${tampilan}</span>
+          </div>
+          <div class="h-3 w-full overflow-hidden rounded-full" style="background:var(--kertas-gelap)">
+            <div class="h-full rounded-full transition-all" style="width:${persen}%; background:${warna}"></div>
+          </div>
+        </div>`;
+    };
+
     wrap.innerHTML = `
       <div class="mb-3 rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:${status.buka ? "rgba(201,154,59,.12)" : "rgba(232,225,206,.5)"}">
         <p class="font-semibold" style="color:${status.buka ? "var(--emas-padi)" : "var(--tinta-lembut)"}">${status.buka ? "🟡 Absensi sedang DIBUKA" : "⚪ Absensi sedang DITUTUP"}</p>
@@ -1697,10 +1715,11 @@ async function muatDashboard() {
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-        ${kartu(`Rata² Kehadiran ${NAMA_BULAN[bulan - 1]}`, `${rataHadir}%`, warnaPersen(rataHadir))}
-        ${kartu(`Rata² Jam Efektif ${NAMA_BULAN[bulan - 1]}`, `${rataEfektif}%`, warnaPersen(rataEfektif))}
-        ${kartu(`Total Alpa ${NAMA_BULAN[bulan - 1]}`, `${totalAlpaBulan} hari`, totalAlpaBulan > 0 ? "var(--merah-jaga)" : "var(--ijo-tua)")}
+      <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+        <h3 class="mb-4 font-display font-semibold" style="color:var(--ijo-tua)">Ringkasan Performa ${NAMA_BULAN[bulan - 1]} ${tahun}</h3>
+        ${barChart(`Rata² Kehadiran`, rataHadir, 100, `${rataHadir}%`, warnaPersen(rataHadir))}
+        ${barChart(`Rata² Jam Efektif`, rataEfektif, 100, `${rataEfektif}%`, warnaPersen(rataEfektif))}
+        ${barChart(`Total Alpa (dari ${hariKerjaList.length * daftarPegawai.length} slot hari-kerja×pegawai)`, totalAlpaBulan, hariKerjaList.length * daftarPegawai.length, `${totalAlpaBulan} hari`, totalAlpaBulan > 0 ? "var(--merah-jaga)" : "var(--ijo-tua)")}
       </div>
       <p class="mt-3 font-mono text-xs" style="color:var(--tinta-lembut)">Data performa bulan berjalan dihitung dengan logika yang sama seperti tab Laporan Bulanan (${hariKerjaList.length} hari kerja, ${formatDurasiJam(totalMenitKerjaBulan)} jam kerja resmi bulan ${NAMA_BULAN[bulan - 1]} ${tahun}). Buka tab <b>Laporan Bulanan</b> untuk rincian per pegawai.</p>
     `;
