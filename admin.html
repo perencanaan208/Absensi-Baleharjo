@@ -1707,11 +1707,10 @@ async function muatDashboard() {
         </div>
 
         <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
-          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Perlu Perhatian (Kehadiran &lt; 90% Bulan Ini)</h3>
-          ${perluPerhatian.length === 0
-            ? `<p class="text-sm" style="color:var(--ijo-tua)">✓ Semua pegawai kehadirannya di atas 90% bulan ini.</p>`
-            : `<ul class="space-y-1.5 text-sm">${perluPerhatian.map(x => `<li class="flex items-center justify-between"><span>${escapeHtml(x.nama)}</span><span class="font-mono text-xs font-semibold" style="color:${warnaPersen(x.persenHadir)}">${x.persenHadir}% hadir</span></li>`).join("")}</ul>`
-          }
+          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Kehadiran per Pegawai — ${NAMA_BULAN[bulan - 1]} ${tahun}</h3>
+          ${[...performa].sort((a, b) => a.persenHadir - b.persenHadir)
+            .map(x => barChart(escapeHtml(x.nama), x.persenHadir, 100, `${x.persenHadir}%`, warnaPersen(x.persenHadir)))
+            .join("")}
         </div>
       </div>
 
