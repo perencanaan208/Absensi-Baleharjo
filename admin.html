@@ -99,7 +99,12 @@
     <div id="tabDashboard" class="tabPanel hidden pb-10">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Dashboard</h2>
-        <p id="dashboardWaktu" class="font-mono text-xs" style="color:var(--tinta-lembut)"></p>
+        <div class="flex items-center gap-3">
+          <p id="dashboardWaktu" class="font-mono text-xs" style="color:var(--tinta-lembut)"></p>
+          <button id="btnMuatUlangDashboard" onclick="muatDashboard()" class="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition active:scale-[0.97]" style="background:var(--ijo-tua); color:var(--kertas)">
+            <span id="ikonMuatUlangDashboard">⟳</span> Muat Ulang
+          </button>
+        </div>
       </div>
       <div id="dashboardWrap"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p></div>
     </div>
@@ -1584,8 +1589,12 @@ function hitungMenitEfektifHari(kelompok, jamMasukAktual, jamPulangAktual) {
 // dengan tab Laporan Bulanan supaya angkanya selalu konsisten satu sama lain.
 async function muatDashboard() {
   const wrap = document.getElementById("dashboardWrap");
+  const btnMuatUlang = document.getElementById("btnMuatUlangDashboard");
+  const ikonMuatUlang = document.getElementById("ikonMuatUlangDashboard");
   wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p>';
   document.getElementById("dashboardWaktu").textContent = new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" });
+  if (btnMuatUlang) { btnMuatUlang.disabled = true; btnMuatUlang.style.opacity = "0.6"; }
+  if (ikonMuatUlang) ikonMuatUlang.style.animation = "spin 0.8s linear infinite";
 
   try {
     const waktu = waktuJakartaSaatIni();
@@ -1747,6 +1756,9 @@ async function muatDashboard() {
     `;
   } catch (err) {
     wrap.innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">${escapeHtml(err.message)}</p>`;
+  } finally {
+    if (btnMuatUlang) { btnMuatUlang.disabled = false; btnMuatUlang.style.opacity = "1"; }
+    if (ikonMuatUlang) ikonMuatUlang.style.animation = "";
   }
 }
 
