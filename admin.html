@@ -72,6 +72,7 @@
 
   <!-- Dropdown menu - tampilan HP saja -->
   <div id="menuMobileWrap" class="hidden flex-col gap-1 border-b px-3 py-2 md:hidden" style="border-color:var(--kertas-gelap); background:rgba(242,238,226,.98)">
+    <button class="tabBtn menuBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="dashboard" onclick="gantiTab('dashboard')">Dashboard</button>
     <button class="tabBtn menuBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="pegawai" onclick="gantiTab('pegawai')">Data Pegawai</button>
     <button class="tabBtn menuBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="pengaturan" onclick="gantiTab('pengaturan')">Jadwal &amp; Lokasi</button>
     <button class="tabBtn menuBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="libur" onclick="gantiTab('libur')">Hari Libur</button>
@@ -83,6 +84,7 @@
   <div class="mx-auto flex max-w-6xl items-start">
     <!-- Sidebar kiri - tampilan tablet/PC saja -->
     <aside class="sticky top-0 hidden w-60 shrink-0 flex-col gap-1 px-3 py-6 md:flex" style="border-right:1px solid var(--kertas-gelap); min-height:calc(100vh - 78px)">
+      <button class="tabBtn menuBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="dashboard" onclick="gantiTab('dashboard')">Dashboard</button>
       <button class="tabBtn menuBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="pegawai" onclick="gantiTab('pegawai')">Data Pegawai</button>
       <button class="tabBtn menuBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="pengaturan" onclick="gantiTab('pengaturan')">Jadwal &amp; Lokasi</button>
       <button class="tabBtn menuBtn rounded-lg px-4 py-2.5 text-left text-sm font-medium" data-tab="libur" onclick="gantiTab('libur')">Hari Libur</button>
@@ -92,6 +94,15 @@
     </aside>
 
     <main class="min-w-0 flex-1 px-5 pt-6">
+
+    <!-- TAB DASHBOARD -->
+    <div id="tabDashboard" class="tabPanel hidden pb-10">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="font-display text-lg font-semibold" style="color:var(--ijo-tua)">Dashboard</h2>
+        <p id="dashboardWaktu" class="font-mono text-xs" style="color:var(--tinta-lembut)"></p>
+      </div>
+      <div id="dashboardWrap"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p></div>
+    </div>
 
     <!-- TAB PEGAWAI -->
     <div id="tabPegawai" class="tabPanel">
@@ -380,7 +391,7 @@ async function logout() {
 function tampilkanDashboard() {
   document.getElementById("viewLogin").classList.add("hidden");
   document.getElementById("viewDashboard").classList.remove("hidden");
-  gantiTab("pegawai");
+  gantiTab("dashboard");
   muatDaftarPegawai();
   api.getConfig().then(res => {
     document.getElementById("namaInstansiAdmin").textContent = res.config.namaKantor || "Desa Baleharjo";
@@ -388,6 +399,7 @@ function tampilkanDashboard() {
 }
 
 const LABEL_TAB_ADMIN = {
+  dashboard: "Dashboard",
   pegawai: "Data Pegawai",
   pengaturan: "Jadwal & Lokasi",
   libur: "Hari Libur",
@@ -407,6 +419,7 @@ function gantiTab(nama) {
   const labelEl = document.getElementById("labelTabAktif");
   if (labelEl) labelEl.textContent = LABEL_TAB_ADMIN[nama] || nama;
   tutupMenuMobile();
+  if (nama === "dashboard") muatDashboard();
   if (nama === "pengaturan") muatPengaturan();
   if (nama === "libur") muatLibur();
   if (nama === "rekap") muatRekap();
@@ -1562,6 +1575,138 @@ function hitungMenitEfektifHari(kelompok, jamMasukAktual, jamPulangAktual) {
   const mulaiEfektif = Math.max(mBukaJadwal, mMasuk);
   const selesaiEfektif = Math.min(mTutupJadwal, mPulang);
   return Math.max(0, selesaiEfektif - mulaiEfektif);
+}
+
+// Dashboard murni merangkum ulang data yang sudah ada (pegawai, rekap absen
+// bulan berjalan, jadwal, hari libur) — tidak ada sumber data baru. Semua
+// fungsi hitung (hitungHariKerjaBulan, hitungTotalMenitKerjaBulan,
+// hitungMenitEfektifHari, cariKelompokJadwal, statusJadwal) dipakai bersama
+// dengan tab Laporan Bulanan supaya angkanya selalu konsisten satu sama lain.
+async function muatDashboard() {
+  const wrap = document.getElementById("dashboardWrap");
+  wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p>';
+  document.getElementById("dashboardWaktu").textContent = new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" });
+
+  try {
+    const waktu = waktuJakartaSaatIni();
+    const bulan = waktu.bulan, tahun = waktu.tahun;
+    const tanggalHariIni = tanggalISOJakartaSaatIni();
+
+    const [resPegawai, resRekap, resLibur, resConfig] = await Promise.all([
+      api.getPegawaiAdmin(TOKEN),
+      api.getRekapAbsen(TOKEN, { bulan, tahun }),
+      api.getLibur(tahun),
+      api.getConfig(),
+    ]);
+
+    const daftarPegawai = urutkanPegawaiKepalaDesaDulu(resPegawai.pegawaiList);
+    const config = resConfig.config;
+    const liburList = resLibur.libur || [];
+    const rekapBulanIni = resRekap.rekap || [];
+
+    const prefixBulan = `${tahun}-${String(bulan).padStart(2, "0")}`;
+    const liburBulanIni = liburList.filter(l => (l.tanggal || "").indexOf(prefixBulan) === 0);
+    const hariKerjaList = hitungHariKerjaBulan(bulan, tahun, config, liburBulanIni);
+    const totalMenitKerjaBulan = hitungTotalMenitKerjaBulan(hariKerjaList, config);
+
+    // --- Status absensi SAAT INI (real-time), sama seperti dipakai halaman absen ---
+    const liburHariIni = cariLiburHariIni(liburList);
+    const status = statusJadwal(config, liburHariIni);
+    const hariIniHariKerja = !liburHariIni && !!cariKelompokJadwal(config, waktu.hariIndex);
+
+    // --- Ringkasan HARI INI: filter rekap bulan berjalan ke tanggal hari ini saja ---
+    const rekapHariIni = rekapBulanIni.filter(r => r.tanggal === tanggalHariIni);
+    const idMasukHariIni = new Set(rekapHariIni.filter(r => r.jenis === "masuk").map(r => r.pegawaiId));
+    const idPulangHariIni = new Set(rekapHariIni.filter(r => r.jenis === "pulang").map(r => r.pegawaiId));
+    const idIjinHariIni = new Set(rekapHariIni.filter(r => r.jenis === "ijin").map(r => r.pegawaiId));
+    const belumAbsenHariIni = daftarPegawai.filter(p => !idMasukHariIni.has(p.id) && !idIjinHariIni.has(p.id));
+
+    // --- Performa BULAN BERJALAN per pegawai (logika sama dengan Laporan Bulanan) ---
+    const perPegawai = new Map();
+    rekapBulanIni.forEach(r => {
+      if (!perPegawai.has(r.pegawaiId)) perPegawai.set(r.pegawaiId, new Map());
+      const petaHari = perPegawai.get(r.pegawaiId);
+      if (!petaHari.has(r.tanggal)) petaHari.set(r.tanggal, { masuk: null, pulang: null, ijin: null });
+      petaHari.get(r.tanggal)[r.jenis] = r;
+    });
+
+    const performa = daftarPegawai.map(p => {
+      const petaHari = perPegawai.get(p.id) || new Map();
+      let masuk = 0, menitEfektif = 0, alpa = 0;
+      petaHari.forEach((hari, tanggal) => {
+        if (hari.masuk) {
+          masuk++;
+          if (hari.pulang) {
+            const hariIndex = new Date(tanggal + "T00:00:00").getDay();
+            const kelompok = cariKelompokJadwal(config, hariIndex);
+            menitEfektif += hitungMenitEfektifHari(kelompok, hari.masuk.jam, hari.pulang.jam);
+          }
+        }
+      });
+      hariKerjaList.forEach(tanggal => {
+        const hari = petaHari.get(tanggal);
+        if (!(hari && (hari.masuk || hari.ijin))) alpa++;
+      });
+      const persenHadir = hariKerjaList.length > 0 ? Math.round((masuk / hariKerjaList.length) * 1000) / 10 : 0;
+      const persenEfektif = totalMenitKerjaBulan > 0 ? Math.round((menitEfektif / totalMenitKerjaBulan) * 1000) / 10 : 0;
+      return { nama: p.nama, jabatan: p.jabatan || "-", persenHadir, persenEfektif, alpa };
+    });
+
+    const rataHadir = performa.length ? Math.round((performa.reduce((s, x) => s + x.persenHadir, 0) / performa.length) * 10) / 10 : 0;
+    const rataEfektif = performa.length ? Math.round((performa.reduce((s, x) => s + x.persenEfektif, 0) / performa.length) * 10) / 10 : 0;
+    const totalAlpaBulan = performa.reduce((s, x) => s + x.alpa, 0);
+    const perluPerhatian = [...performa].filter(x => x.persenHadir < 90).sort((a, b) => a.persenHadir - b.persenHadir).slice(0, 5);
+
+    const warnaPersen = (v) => v >= 90 ? "var(--ijo-tua)" : v >= 75 ? "var(--emas-padi)" : "var(--merah-jaga)";
+    const kartu = (label, nilai, warna) => `
+      <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+        <p class="font-mono text-xs uppercase tracking-wide" style="color:var(--tinta-lembut)">${label}</p>
+        <p class="mt-1 font-display text-2xl font-semibold" style="color:${warna || "var(--ijo-tua)"}">${nilai}</p>
+      </div>`;
+
+    wrap.innerHTML = `
+      <div class="mb-3 rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:${status.buka ? "rgba(201,154,59,.12)" : "rgba(232,225,206,.5)"}">
+        <p class="font-semibold" style="color:${status.buka ? "var(--emas-padi)" : "var(--tinta-lembut)"}">${status.buka ? "🟡 Absensi sedang DIBUKA" : "⚪ Absensi sedang DITUTUP"}</p>
+        <p class="mt-1 text-sm" style="color:var(--tinta-lembut)">${escapeHtml(status.pesan)}</p>
+      </div>
+
+      <div class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        ${kartu("Jumlah Pegawai", daftarPegawai.length)}
+        ${kartu("Absen Masuk Hari Ini", `${idMasukHariIni.size}/${daftarPegawai.length}`)}
+        ${kartu("Absen Pulang Hari Ini", `${idPulangHariIni.size}/${daftarPegawai.length}`)}
+        ${kartu("Ijin Hari Ini", idIjinHariIni.size)}
+      </div>
+
+      <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Belum Absen Hari Ini</h3>
+          ${!hariIniHariKerja
+            ? `<p class="text-sm" style="color:var(--tinta-lembut)">Hari ini bukan hari kerja / libur — tidak ada absen yang diharapkan.</p>`
+            : belumAbsenHariIni.length === 0
+              ? `<p class="text-sm" style="color:var(--ijo-tua)">✓ Semua pegawai sudah absen masuk atau ijin hari ini.</p>`
+              : `<ul class="space-y-1.5 text-sm">${belumAbsenHariIni.map(p => `<li class="flex items-center justify-between"><span>${escapeHtml(p.nama)}</span><span class="font-mono text-xs" style="color:var(--tinta-lembut)">${escapeHtml(p.jabatan || "-")}</span></li>`).join("")}</ul>`
+          }
+        </div>
+
+        <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Perlu Perhatian (Kehadiran &lt; 90% Bulan Ini)</h3>
+          ${perluPerhatian.length === 0
+            ? `<p class="text-sm" style="color:var(--ijo-tua)">✓ Semua pegawai kehadirannya di atas 90% bulan ini.</p>`
+            : `<ul class="space-y-1.5 text-sm">${perluPerhatian.map(x => `<li class="flex items-center justify-between"><span>${escapeHtml(x.nama)}</span><span class="font-mono text-xs font-semibold" style="color:${warnaPersen(x.persenHadir)}">${x.persenHadir}% hadir</span></li>`).join("")}</ul>`
+          }
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        ${kartu(`Rata² Kehadiran ${NAMA_BULAN[bulan - 1]}`, `${rataHadir}%`, warnaPersen(rataHadir))}
+        ${kartu(`Rata² Jam Efektif ${NAMA_BULAN[bulan - 1]}`, `${rataEfektif}%`, warnaPersen(rataEfektif))}
+        ${kartu(`Total Alpa ${NAMA_BULAN[bulan - 1]}`, `${totalAlpaBulan} hari`, totalAlpaBulan > 0 ? "var(--merah-jaga)" : "var(--ijo-tua)")}
+      </div>
+      <p class="mt-3 font-mono text-xs" style="color:var(--tinta-lembut)">Data performa bulan berjalan dihitung dengan logika yang sama seperti tab Laporan Bulanan (${hariKerjaList.length} hari kerja, ${formatDurasiJam(totalMenitKerjaBulan)} jam kerja resmi bulan ${NAMA_BULAN[bulan - 1]} ${tahun}). Buka tab <b>Laporan Bulanan</b> untuk rincian per pegawai.</p>
+    `;
+  } catch (err) {
+    wrap.innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">${escapeHtml(err.message)}</p>`;
+  }
 }
 
 async function muatLaporanBulanan() {
