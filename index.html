@@ -55,8 +55,9 @@
 <section class="app-main mx-auto w-full max-w-md flex-1 px-5 pb-8 pt-4">
 
   <!-- STATE: memuat -->
-  <div id="stateMemuatAwal" class="flex justify-center py-16">
+  <div id="stateMemuatAwal" class="flex flex-col items-center gap-3 py-16">
     <div class="spinner" style="border-color:rgba(23,53,42,.2); border-top-color:var(--ijo)"></div>
+    <p id="teksMemuatAwal" class="font-mono text-xs" style="color:var(--tinta-lembut)"></p>
   </div>
 
   <!-- STATE: tutup -->
@@ -185,8 +186,7 @@
   </p>
 </footer>
 
-<script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=37"></script>
+<script src="assets/app.js?v=38"></script>
 <script>
 /* ============================ State halaman ============================ */
 let CONFIG = null;
@@ -198,6 +198,28 @@ let STREAM = null;
 let LOOP_DETEKSI = false;
 let HASIL_VERIFIKASI = null; // { cocok, statusHariIni } — diisi setelah verifikasi otomatis berhasil, dipakai saat tombol "Catat Absen" ditekan
 let ALASAN_IJIN = null;
+
+// --- Lazy-load pustaka face-api.min.js -----------------------------------
+// Pustaka ini cukup besar dan hanya dibutuhkan saat pegawai benar-benar
+// membuka kamera untuk verifikasi wajah — TIDAK saat halaman baru dibuka.
+// Memuatnya belakangan (bukan lewat <script> statis di awal) membuat
+// halaman awal jauh lebih ringan & cepat tampil, terutama di sinyal lemah.
+// Dipanggil lagi setelah berhasil sekali pun aman (langsung resolve), dan
+// dipanggil bersamaan dari beberapa tempat pun aman (memakai promise yang
+// sama, tidak memuat dobel).
+let skripFaceApiPromise = null;
+function muatSkripFaceApi() {
+  if (typeof faceapi !== "undefined") return Promise.resolve();
+  if (skripFaceApiPromise) return skripFaceApiPromise;
+  skripFaceApiPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "assets/face-api.min.js";
+    s.onload = () => resolve();
+    s.onerror = () => { skripFaceApiPromise = null; reject(new Error("Gagal memuat pustaka pengenalan wajah. Periksa koneksi internet Anda.")); };
+    document.head.appendChild(s);
+  });
+  return skripFaceApiPromise;
+}
 let KETERANGAN_IJIN = "";
 
 const KONFIG_DEFAULT = {
@@ -289,35 +311,118 @@ setInterval(() => {
   if (!document.getElementById("statePilihJenis").classList.contains("hidden")) updateInfoJamTutup();
 }, 60000);
 
-async function init() {
+// --- Cache ringan (localStorage) untuk CONFIG & hari libur ---------------
+// Tujuannya: begitu pegawai membuka halaman ini lagi (kasus paling umum,
+// dipakai tiap hari), tampilan langsung terisi dari data terakhir yang
+// tersimpan di HP-nya sendiri — TANPA menunggu jaringan sama sekali — baru
+// disegarkan diam-diam begitu data terbaru dari server datang. Ini yang
+// paling terasa di sinyal lemah, karena pegawai tidak perlu menatap layar
+// kosong/"Memuat..." setiap kali, kecuali memang baru pertama kali buka.
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 jam — cukup lama karena jadwal/libur jarang berubah, tapi tetap disegarkan tiap buka halaman
+function ambilCache(key) {
   try {
-    const res = await api.getConfig();
-    CONFIG = Object.assign({}, KONFIG_DEFAULT, res.config);
-  } catch (err) {
-    CONFIG = KONFIG_DEFAULT;
-    const kotak = document.getElementById("pesanKoneksi");
-    kotak.classList.remove("hidden");
-    kotak.querySelector("p").textContent = "Belum tersambung ke server data. Menampilkan mode pratinjau. (" + err.message + ")";
-  }
-  try {
-    const resLibur = await api.getLibur(waktuJakartaSaatIni().tahun);
-    LIBUR_LIST = resLibur.libur || [];
-  } catch (err) {
-    LIBUR_LIST = [];
-  }
-  muatRingkasanHariIni();
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.waktu !== "number") return null;
+    if (Date.now() - parsed.waktu > CACHE_TTL_MS) return null; // terlalu basi, anggap tidak ada
+    return parsed.data;
+  } catch { return null; }
+}
+function simpanCache(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ data, waktu: Date.now() })); } catch {}
+}
+
+// State awal (loading/pilih-jenis/tutup) boleh disegarkan otomatis oleh
+// respons jaringan yang datang belakangan; state lain (sedang ijin, sedang
+// verifikasi wajah, dst.) tidak boleh "ditarik mundur" oleh pembaruan latar
+// belakang supaya tidak mengganggu pegawai yang sudah melangkah lebih jauh.
+function bolehPerbaruiTampilanAwal() {
+  return ["stateMemuatAwal", "statePilihJenis", "stateTutup"].some(
+    id => !document.getElementById(id).classList.contains("hidden")
+  );
+}
+
+function renderStatusJadwal() {
+  if (!bolehPerbaruiTampilanAwal()) return; // pegawai sudah pindah layar, jangan ganggu
   document.getElementById("namaInstansi").textContent = CONFIG.namaKantor || "Kantor Desa Baleharjo";
   const st = statusJadwal(CONFIG, cariLiburHariIni(LIBUR_LIST));
   updateBadge(st.buka);
   if (st.buka) {
     updateInfoJamTutup();
     tampilkan("statePilihJenis");
+    // Idle-preload pustaka & model wajah di latar belakang begitu layar
+    // absen sudah tampil — supaya saat pegawai benar-benar menekan tombol
+    // absen, kamera & verifikasi wajah sudah siap tanpa jeda tambahan.
+    muatSkripFaceApi().then(() => muatModelWajah()).catch(() => {});
   } else {
     document.getElementById("pesanTutup").textContent = st.pesan;
     document.getElementById("jamLayananWrap").innerHTML = ringkasanJadwal(CONFIG)
       .map(t => `<p class="font-mono text-xs" style="color:var(--tinta-lembut)">${t}</p>`).join("");
     tampilkan("stateTutup");
   }
+}
+
+async function init() {
+  // Ringkasan hari ini tidak bergantung pada CONFIG/libur, jadi langsung
+  // ditembakkan sejak awal, SEJAJAR dengan permintaan lain — bukan menunggu
+  // config selesai dulu baru mulai (itu yang bikin lambat sebelumnya).
+  muatRingkasanHariIni();
+
+  const tahunSkrg = waktuJakartaSaatIni().tahun;
+  const kunciCacheConfig = "absensi_cache_config";
+  const kunciCacheLibur = "absensi_cache_libur_" + tahunSkrg;
+  const cacheConfig = ambilCache(kunciCacheConfig);
+  const cacheLibur = ambilCache(kunciCacheLibur);
+
+  let sudahTampilDariCache = false;
+  if (cacheConfig) {
+    CONFIG = Object.assign({}, KONFIG_DEFAULT, cacheConfig);
+    LIBUR_LIST = cacheLibur || [];
+    renderStatusJadwal(); // halaman langsung interaktif dari data lama, tanpa menunggu jaringan
+    sudahTampilDariCache = true;
+  }
+
+  // Kalau belum ada cache sama sekali (pemakaian pertama kali), beri kabar
+  // setelah beberapa detik supaya spinner tidak terasa macet di sinyal lemah.
+  let timerPeringatanLambat = null;
+  if (!sudahTampilDariCache) {
+    timerPeringatanLambat = setTimeout(() => {
+      const el = document.getElementById("teksMemuatAwal");
+      if (el) el.textContent = "Sinyal lambat terdeteksi, masih mencoba memuat…";
+    }, 4000);
+  }
+
+  // getConfig & getLibur tidak saling bergantung → ambil BERSAMAAN
+  // (Promise.allSettled), bukan berurutan seperti sebelumnya. Ini memangkas
+  // waktu tunggu sampai separuh lebih di sinyal lemah/lambat.
+  const [hasilConfig, hasilLibur] = await Promise.allSettled([
+    api.getConfig(),
+    api.getLibur(tahunSkrg),
+  ]);
+  if (timerPeringatanLambat) clearTimeout(timerPeringatanLambat);
+
+  if (hasilConfig.status === "fulfilled") {
+    CONFIG = Object.assign({}, KONFIG_DEFAULT, hasilConfig.value.config);
+    simpanCache(kunciCacheConfig, hasilConfig.value.config);
+  } else if (!sudahTampilDariCache) {
+    CONFIG = KONFIG_DEFAULT;
+    const kotak = document.getElementById("pesanKoneksi");
+    kotak.classList.remove("hidden");
+    kotak.querySelector("p").textContent = "Belum tersambung ke server data. Menampilkan mode pratinjau. (" + hasilConfig.reason.message + ")";
+  }
+  // Kalau tadi sudah tampil dari cache tapi permintaan ini gagal, biarkan
+  // data cache lama tetap dipakai diam-diam — tidak perlu menakuti pegawai
+  // dengan pesan galat untuk sesuatu yang sudah bisa mereka lihat & pakai.
+
+  if (hasilLibur.status === "fulfilled") {
+    LIBUR_LIST = hasilLibur.value.libur || [];
+    simpanCache(kunciCacheLibur, LIBUR_LIST);
+  } else if (!sudahTampilDariCache) {
+    LIBUR_LIST = [];
+  }
+
+  renderStatusJadwal();
 }
 init();
 
@@ -477,6 +582,7 @@ async function mulaiKamera() {
   HASIL_VERIFIKASI = null;
 
   try {
+    await muatSkripFaceApi();
     await muatModelWajah();
     STREAM = await nyalakanKamera(video);
     statusEl.style.display = "none";
@@ -486,7 +592,11 @@ async function mulaiKamera() {
     statusEl.style.display = "flex";
     statusEl.style.background = "var(--merah-jaga)";
     statusEl.innerHTML = `<p class="text-sm px-2">${
-      err.name === "NotAllowedError" ? "Izin kamera ditolak. Aktifkan izin kamera di pengaturan browser." : "Kamera tidak dapat diakses di perangkat ini."
+      err.name === "NotAllowedError"
+        ? "Izin kamera ditolak. Aktifkan izin kamera di pengaturan browser."
+        : err.name === "NotFoundError"
+          ? "Kamera tidak ditemukan di perangkat ini."
+          : (err.message || "Gagal menyiapkan kamera/verifikasi wajah. Periksa koneksi internet Anda, lalu coba lagi.")
     }</p>`;
     bingkai.classList.add("error");
   }
