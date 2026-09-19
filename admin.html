@@ -320,8 +320,7 @@
   </div>
 </div>
 
-<script src="assets/face-api.min.js"></script>
-<script src="assets/app.js?v=34"></script>
+<script src="assets/app.js?v=35"></script>
 <script>
 // Modal konfirmasi custom (menggantikan confirm() bawaan browser).
 // Pakai: const ok = await tampilkanKonfirmasi("Pesan...", "Judul", "Ya, Hapus");
@@ -357,6 +356,50 @@ function tampilkanKonfirmasi(pesan, judul = "Konfirmasi", labelOk = "Ya") {
 
 const HARI_LABEL = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 let TOKEN = sessionStorage.getItem(KUNCI_TOKEN);
+
+// Lazy-load pustaka face-api.min.js: hanya dibutuhkan saat admin membuka
+// kamera untuk mendaftarkan/memperbarui wajah pegawai — bukan setiap kali
+// panel admin dibuka. Sama seperti index.html, ini membuat panel admin
+// jauh lebih ringan & cepat dimuat, terutama di sinyal lemah.
+let skripFaceApiPromiseAdmin = null;
+function muatSkripFaceApi() {
+  if (typeof faceapi !== "undefined") return Promise.resolve();
+  if (skripFaceApiPromiseAdmin) return skripFaceApiPromiseAdmin;
+  skripFaceApiPromiseAdmin = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "assets/face-api.min.js";
+    s.onload = () => resolve();
+    s.onerror = () => { skripFaceApiPromiseAdmin = null; reject(new Error("Gagal memuat pustaka pengenalan wajah. Periksa koneksi internet Anda.")); };
+    document.head.appendChild(s);
+  });
+  return skripFaceApiPromiseAdmin;
+}
+
+// --- Dedup permintaan yang sering ditembak bersamaan ---------------------
+// Saat login, "tampilkanDashboard()" memicu beberapa pemuat tab sekaligus
+// (Dashboard + Data Pegawai), yang masing-masing tadinya menembak
+// api.getPegawaiAdmin()/api.getConfig() SENDIRI-SENDIRI — jadi 2x request
+// untuk data yang sama, di waktu yang sama. Helper ini membuat permintaan
+// yang tumpang-tindih berbagi satu promise yang sama (network request
+// tunggal), tanpa membuat data jadi basi: begitu permintaan itu selesai,
+// memonya otomatis dikosongkan lagi, jadi kunjungan berikutnya tetap ambil
+// data segar seperti biasa. Ini murni menghemat sinyal, bukan meng-cache.
+let promisePegawaiAdminSedangJalan = null;
+function ambilPegawaiAdmin() {
+  if (promisePegawaiAdminSedangJalan) return promisePegawaiAdminSedangJalan;
+  promisePegawaiAdminSedangJalan = api.getPegawaiAdmin(TOKEN).finally(() => {
+    promisePegawaiAdminSedangJalan = null;
+  });
+  return promisePegawaiAdminSedangJalan;
+}
+let promiseConfigAdminSedangJalan = null;
+function ambilConfigAdmin() {
+  if (promiseConfigAdminSedangJalan) return promiseConfigAdminSedangJalan;
+  promiseConfigAdminSedangJalan = api.getConfig().finally(() => {
+    promiseConfigAdminSedangJalan = null;
+  });
+  return promiseConfigAdminSedangJalan;
+}
 let DESCRIPTOR_BARU = null;
 let STREAM_ADMIN = null;
 let JADWAL_STATE = [
@@ -372,6 +415,9 @@ document.getElementById("formLogin").addEventListener("submit", async (e) => {
   const err = document.getElementById("errorLogin");
   err.classList.add("hidden");
   btn.disabled = true; btn.textContent = "Memeriksa…";
+  // Beri kabar kalau prosesnya terasa lama — supaya tombol "Memeriksa..."
+  // tidak terlihat macet diam saat sinyal lemah/lambat.
+  const timerLambat = setTimeout(() => { btn.textContent = "Sinyal lambat, masih mencoba…"; }, 4000);
   try {
     const res = await api.login(document.getElementById("inputPassword").value);
     TOKEN = res.token;
@@ -381,6 +427,7 @@ document.getElementById("formLogin").addEventListener("submit", async (e) => {
     err.textContent = e2.message || "Kata sandi salah.";
     err.classList.remove("hidden");
   } finally {
+    clearTimeout(timerLambat);
     btn.disabled = false; btn.textContent = "Masuk";
   }
 });
@@ -398,7 +445,7 @@ function tampilkanDashboard() {
   document.getElementById("viewDashboard").classList.remove("hidden");
   gantiTab("dashboard");
   muatDaftarPegawai();
-  api.getConfig().then(res => {
+  ambilConfigAdmin().then(res => {
     document.getElementById("namaInstansiAdmin").textContent = res.config.namaKantor || "Desa Baleharjo";
   }).catch(() => {});
 }
@@ -455,7 +502,7 @@ let DAFTAR_PEGAWAI_STATE = [];
 async function muatDaftarPegawai() {
   const wrap = document.getElementById("daftarPegawai");
   try {
-    const res = await api.getPegawaiAdmin(TOKEN);
+    const res = await ambilPegawaiAdmin();
     DAFTAR_PEGAWAI_STATE = res.pegawaiList;
     document.getElementById("jumlahPegawai").textContent = `(${res.pegawaiList.length})`;
     if (res.pegawaiList.length === 0) {
@@ -549,6 +596,7 @@ async function bukaKameraAdmin() {
   document.getElementById("kameraAdminWrap").classList.remove("hidden");
   document.getElementById("kameraAdminWrap").classList.add("flex");
   try {
+    await muatSkripFaceApi();
     await muatModelWajah();
     STREAM_ADMIN = await nyalakanKamera(document.getElementById("videoAdmin"));
   } catch (err) {
@@ -611,6 +659,7 @@ async function prosesUploadFoto(event) {
   document.getElementById("statusUploadFoto").classList.add("flex");
 
   try {
+    await muatSkripFaceApi();
     await muatModelWajah();
 
     const urlGambar = URL.createObjectURL(file);
@@ -699,7 +748,7 @@ document.getElementById("formPegawai").addEventListener("submit", async (e) => {
 /* ---------------- TAB PENGATURAN ---------------- */
 
 async function muatPengaturan() {
-  const res = await api.getConfig();
+  const res = await ambilConfigAdmin();
   const cfg = res.config;
   document.getElementById("cfgNamaKantor").value = cfg.namaKantor || "";
   document.getElementById("cfgKepalaDesa").value = cfg.namaKepalaDesa || "";
@@ -1273,7 +1322,7 @@ async function muatRekap() {
   try {
     const [resRekap, resConfig] = await Promise.all([
       api.getRekapAbsen(TOKEN, { bulan, tahun }),
-      api.getConfig(),
+      ambilConfigAdmin(),
     ]);
     REKAP_STATE = resRekap.rekap;
     const config = resConfig.config;
@@ -1602,10 +1651,10 @@ async function muatDashboard() {
     const tanggalHariIni = tanggalISOJakartaSaatIni();
 
     const [resPegawai, resRekap, resLibur, resConfig] = await Promise.all([
-      api.getPegawaiAdmin(TOKEN),
+      ambilPegawaiAdmin(),
       api.getRekapAbsen(TOKEN, { bulan, tahun }),
       api.getLibur(tahun),
-      api.getConfig(),
+      ambilConfigAdmin(),
     ]);
 
     const daftarPegawai = urutkanPegawaiKepalaDesaDulu(resPegawai.pegawaiList);
@@ -1771,10 +1820,10 @@ async function muatLaporanBulanan() {
 
   try {
     const [resPegawai, resRekap, resLibur, resConfig] = await Promise.all([
-      api.getPegawaiAdmin(TOKEN),
+      ambilPegawaiAdmin(),
       api.getRekapAbsen(TOKEN, { bulan, tahun }),
       api.getLibur(tahun),
-      api.getConfig(),
+      ambilConfigAdmin(),
     ]);
 
     const daftarPegawai = urutkanPegawaiKepalaDesaDulu(resPegawai.pegawaiList);
