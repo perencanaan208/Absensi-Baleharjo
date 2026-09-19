@@ -45,7 +45,10 @@
     <input type="password" id="inputPassword" placeholder="Kata sandi admin" required
       class="w-full rounded-xl px-4 py-3 outline-none" style="border:1px solid var(--kertas-gelap); background:white">
     <p id="errorLogin" class="mt-2 text-sm hidden" style="color:var(--merah-jaga)"></p>
-    <button id="btnLogin" class="mt-4 w-full rounded-xl px-4 py-3 font-medium text-[var(--kertas)]" style="background:var(--ijo-tua)">Masuk</button>
+    <button id="btnLogin" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-medium text-[var(--kertas)]" style="background:var(--ijo-tua)">
+      <span id="spinnerLogin" class="spinner hidden" style="width:16px; height:16px; border-width:2px; border-color:rgba(255,255,255,.35); border-top-color:white"></span>
+      <span id="teksBtnLogin">Masuk</span>
+    </button>
   </form>
   <a href="index.html" class="mt-6 text-sm underline" style="color:var(--tinta-lembut)">Kembali ke halaman absen</a>
 </div>
@@ -412,12 +415,16 @@ if (TOKEN) tampilkanDashboard();
 document.getElementById("formLogin").addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = document.getElementById("btnLogin");
+  const spinner = document.getElementById("spinnerLogin");
+  const teksBtn = document.getElementById("teksBtnLogin");
   const err = document.getElementById("errorLogin");
   err.classList.add("hidden");
-  btn.disabled = true; btn.textContent = "Memeriksa…";
+  btn.disabled = true;
+  spinner.classList.remove("hidden");
+  teksBtn.textContent = "Memeriksa…";
   // Beri kabar kalau prosesnya terasa lama — supaya tombol "Memeriksa..."
   // tidak terlihat macet diam saat sinyal lemah/lambat.
-  const timerLambat = setTimeout(() => { btn.textContent = "Sinyal lambat, masih mencoba…"; }, 4000);
+  const timerLambat = setTimeout(() => { teksBtn.textContent = "Sinyal lambat, masih mencoba…"; }, 4000);
   try {
     const res = await api.login(document.getElementById("inputPassword").value);
     TOKEN = res.token;
@@ -428,7 +435,9 @@ document.getElementById("formLogin").addEventListener("submit", async (e) => {
     err.classList.remove("hidden");
   } finally {
     clearTimeout(timerLambat);
-    btn.disabled = false; btn.textContent = "Masuk";
+    btn.disabled = false;
+    spinner.classList.add("hidden");
+    teksBtn.textContent = "Masuk";
   }
 });
 
