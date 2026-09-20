@@ -407,6 +407,29 @@ function muatSkripFaceApi() {
 // tunggal), tanpa membuat data jadi basi: begitu permintaan itu selesai,
 // memonya otomatis dikosongkan lagi, jadi kunjungan berikutnya tetap ambil
 // data segar seperti biasa. Ini murni menghemat sinyal, bukan meng-cache.
+// --- Cache ringan untuk CONFIG & hari libur -------------------------------
+// Pakai kunci localStorage YANG SAMA dengan index.html (halaman absen
+// pegawai) — karena satu domain, cache-nya otomatis saling terpakai. Data
+// ini (jadwal kerja, daftar libur) jarang berubah, jadi aman dipakai dari
+// cache dulu supaya Dashboard tidak perlu menembak SEMUA request sekaligus
+// ke Apps Script (yang punya batas eksekusi bersamaan cukup ketat) — cukup
+// data pegawai & rekap absen (yang memang harus selalu segar) saja yang
+// live setiap saat.
+const CACHE_TTL_MS_ADMIN = 12 * 60 * 60 * 1000; // 12 jam
+function ambilCacheAdmin(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.waktu !== "number") return null;
+    if (Date.now() - parsed.waktu > CACHE_TTL_MS_ADMIN) return null;
+    return parsed.data;
+  } catch { return null; }
+}
+function simpanCacheAdmin(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ data, waktu: Date.now() })); } catch {}
+}
+
 let promisePegawaiAdminSedangJalan = null;
 function ambilPegawaiAdmin() {
   if (promisePegawaiAdminSedangJalan) return promisePegawaiAdminSedangJalan;
@@ -474,8 +497,13 @@ function tampilkanDashboard() {
   document.getElementById("viewDashboard").classList.remove("hidden");
   gantiTab("dashboard");
   muatDaftarPegawai();
+  const cacheConfigHeader = ambilCacheAdmin("absensi_cache_config");
+  if (cacheConfigHeader) {
+    document.getElementById("namaInstansiAdmin").textContent = cacheConfigHeader.namaKantor || "Desa Baleharjo";
+  }
   ambilConfigAdmin().then(res => {
     document.getElementById("namaInstansiAdmin").textContent = res.config.namaKantor || "Desa Baleharjo";
+    simpanCacheAdmin("absensi_cache_config", res.config);
   }).catch(() => {});
 }
 
@@ -1349,10 +1377,13 @@ async function muatRekap() {
   const wrap = document.getElementById("rekapWrap");
   wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p>';
   try {
+    const cacheConfig = ambilCacheAdmin("absensi_cache_config");
     const [resRekap, resConfig] = await Promise.all([
       api.getRekapAbsen(TOKEN, { bulan, tahun }),
-      ambilConfigAdmin(),
+      cacheConfig ? Promise.resolve({ config: cacheConfig }) : ambilConfigAdmin(),
     ]);
+    if (cacheConfig) ambilConfigAdmin().then(r => simpanCacheAdmin("absensi_cache_config", r.config)).catch(() => {});
+    else simpanCacheAdmin("absensi_cache_config", resConfig.config);
     REKAP_STATE = resRekap.rekap;
     const config = resConfig.config;
     CONFIG_REKAP_STATE = config;
@@ -1679,12 +1710,29 @@ async function muatDashboard() {
     const bulan = waktu.bulan, tahun = waktu.tahun;
     const tanggalHariIni = tanggalISOJakartaSaatIni();
 
+    const kunciCacheConfig = "absensi_cache_config";
+    const kunciCacheLibur = "absensi_cache_libur_" + tahun;
+    const cacheConfig = ambilCacheAdmin(kunciCacheConfig);
+    const cacheLibur = ambilCacheAdmin(kunciCacheLibur);
+
+    // Config & libur jarang berubah → kalau ada di cache, pakai itu dulu
+    // (tidak perlu jadi bagian dari request bersamaan ke server). Kalau
+    // tidak ada cache sama sekali (pemakaian pertama), baru diambil live
+    // bersamaan dengan pegawai & rekap seperti biasa.
     const [resPegawai, resRekap, resLibur, resConfig] = await Promise.all([
       ambilPegawaiAdmin(),
       api.getRekapAbsen(TOKEN, { bulan, tahun }),
-      api.getLibur(tahun),
-      ambilConfigAdmin(),
+      cacheLibur ? Promise.resolve({ libur: cacheLibur }) : api.getLibur(tahun),
+      cacheConfig ? Promise.resolve({ config: cacheConfig }) : ambilConfigAdmin(),
     ]);
+
+    // Segarkan cache config & libur diam-diam di latar belakang (tidak
+    // ditunggu) supaya kunjungan berikutnya tetap dapat data terbaru, tanpa
+    // menambah beban permintaan bersamaan pada pemuatan Dashboard SEKARANG.
+    if (cacheConfig) ambilConfigAdmin().then(r => simpanCacheAdmin(kunciCacheConfig, r.config)).catch(() => {});
+    else simpanCacheAdmin(kunciCacheConfig, resConfig.config);
+    if (cacheLibur) api.getLibur(tahun).then(r => simpanCacheAdmin(kunciCacheLibur, r.libur || [])).catch(() => {});
+    else simpanCacheAdmin(kunciCacheLibur, resLibur.libur || []);
 
     const daftarPegawai = urutkanPegawaiKepalaDesaDulu(resPegawai.pegawaiList);
     const config = resConfig.config;
@@ -1848,12 +1896,22 @@ async function muatLaporanBulanan() {
   wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p>';
 
   try {
+    const kunciCacheConfig = "absensi_cache_config";
+    const kunciCacheLibur = "absensi_cache_libur_" + tahun;
+    const cacheConfig = ambilCacheAdmin(kunciCacheConfig);
+    const cacheLibur = ambilCacheAdmin(kunciCacheLibur);
+
     const [resPegawai, resRekap, resLibur, resConfig] = await Promise.all([
       ambilPegawaiAdmin(),
       api.getRekapAbsen(TOKEN, { bulan, tahun }),
-      api.getLibur(tahun),
-      ambilConfigAdmin(),
+      cacheLibur ? Promise.resolve({ libur: cacheLibur }) : api.getLibur(tahun),
+      cacheConfig ? Promise.resolve({ config: cacheConfig }) : ambilConfigAdmin(),
     ]);
+
+    if (cacheConfig) ambilConfigAdmin().then(r => simpanCacheAdmin(kunciCacheConfig, r.config)).catch(() => {});
+    else simpanCacheAdmin(kunciCacheConfig, resConfig.config);
+    if (cacheLibur) api.getLibur(tahun).then(r => simpanCacheAdmin(kunciCacheLibur, r.libur || [])).catch(() => {});
+    else simpanCacheAdmin(kunciCacheLibur, resLibur.libur || []);
 
     const daftarPegawai = urutkanPegawaiKepalaDesaDulu(resPegawai.pegawaiList);
     const config = resConfig.config;
