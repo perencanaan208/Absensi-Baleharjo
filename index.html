@@ -190,6 +190,7 @@
 <script>
 /* ============================ State halaman ============================ */
 let CONFIG = null;
+let PRAMUAT_PEGAWAI_PROMISE = null; // daftar pegawai (utk cocokkan wajah) dipramuat sejak halaman dibuka
 let LIBUR_LIST = [];
 let JENIS = null;
 let LOKASI = null;
@@ -351,10 +352,6 @@ function renderStatusJadwal() {
   if (st.buka) {
     updateInfoJamTutup();
     tampilkan("statePilihJenis");
-    // Idle-preload pustaka & model wajah di latar belakang begitu layar
-    // absen sudah tampil — supaya saat pegawai benar-benar menekan tombol
-    // absen, kamera & verifikasi wajah sudah siap tanpa jeda tambahan.
-    muatSkripFaceApi().then(() => muatModelWajah()).catch(() => {});
   } else {
     document.getElementById("pesanTutup").textContent = st.pesan;
     document.getElementById("jamLayananWrap").innerHTML = ringkasanJadwal(CONFIG)
@@ -368,6 +365,16 @@ async function init() {
   // ditembakkan sejak awal, SEJAJAR dengan permintaan lain — bukan menunggu
   // config selesai dulu baru mulai (itu yang bikin lambat sebelumnya).
   muatRingkasanHariIni();
+
+  // Pramuat semua yang dibutuhkan untuk VERIFIKASI WAJAH sejak detik pertama
+  // halaman dibuka — bukan menunggu absensi dibuka/status jadwal dulu.
+  // Ini penting karena pegawai kadang baru buka halaman 2-3 menit sebelum
+  // jam masuk dan langsung buru-buru absen; kalau pustaka wajah, model, dan
+  // daftar pegawai baru mulai dimuat SAAT itu, verifikasinya jadi lambat
+  // tepat ketika mereka paling butuh cepat. Dengan dimulai dari sini,
+  // semuanya biasanya sudah siap sebelum pegawai sempat menekan tombol.
+  muatSkripFaceApi().then(() => muatModelWajah()).catch(() => {});
+  PRAMUAT_PEGAWAI_PROMISE = api.getPegawaiUntukAbsen().catch(() => null);
 
   const tahunSkrg = waktuJakartaSaatIni().tahun;
   const kunciCacheConfig = "absensi_cache_config";
@@ -659,8 +666,12 @@ async function verifikasiOtomatis() {
       return;
     }
     const descriptor = Array.from(hasilDeteksi.descriptor);
-    const { pegawaiList } = await api.getPegawaiUntukAbsen();
-    const cocok = cocokkanWajah(descriptor, pegawaiList);
+    // Biasanya sudah selesai dimuat sejak halaman dibuka (lihat init()) —
+    // jadi baris ini normalnya tidak menunggu jaringan sama sekali di sini,
+    // tepat saat pegawai sedang buru-buru absen.
+    let hasilPegawai = PRAMUAT_PEGAWAI_PROMISE ? await PRAMUAT_PEGAWAI_PROMISE : null;
+    if (!hasilPegawai) hasilPegawai = await api.getPegawaiUntukAbsen(); // fallback kalau pramuat gagal/belum sempat jalan
+    const cocok = cocokkanWajah(descriptor, hasilPegawai.pegawaiList);
 
     if (!cocok) {
       matikanKamera(STREAM);
