@@ -1700,56 +1700,50 @@ async function muatDashboard() {
   const wrap = document.getElementById("dashboardWrap");
   const btnMuatUlang = document.getElementById("btnMuatUlangDashboard");
   const ikonMuatUlang = document.getElementById("ikonMuatUlangDashboard");
-  wrap.innerHTML = '<p class="text-sm" style="color:var(--tinta-lembut)">Memuat…</p>';
   document.getElementById("dashboardWaktu").textContent = new Date().toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" });
   if (btnMuatUlang) { btnMuatUlang.disabled = true; btnMuatUlang.style.opacity = "0.6"; }
   if (ikonMuatUlang) ikonMuatUlang.style.animation = "spin 0.8s linear infinite";
 
-  try {
-    const waktu = waktuJakartaSaatIni();
-    const bulan = waktu.bulan, tahun = waktu.tahun;
-    const tanggalHariIni = tanggalISOJakartaSaatIni();
+  // Dibagi 2 tahap supaya terasa cepat: bagian "hari ini" (paling sering
+  // dilihat) tampil duluan begitu data pegawai+rekap (yang wajib selalu
+  // segar) datang — tanpa menunggu config/jadwal/libur yang biasanya lebih
+  // lambat. Status jadwal & performa bulanan (butuh config+libur, boleh
+  // dari cache) menyusul di latar belakang begitu siap.
+  wrap.innerHTML = `
+    <div id="dashboardSlotStatus" class="mb-3"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat status jadwal…</p></div>
+    <div id="dashboardSlotHariIni"><p class="text-sm" style="color:var(--tinta-lembut)">Memuat data hari ini…</p></div>
+    <div id="dashboardSlotPerforma" class="mt-6"></div>
+  `;
 
-    const kunciCacheConfig = "absensi_cache_config";
-    const kunciCacheLibur = "absensi_cache_libur_" + tahun;
-    const cacheConfig = ambilCacheAdmin(kunciCacheConfig);
-    const cacheLibur = ambilCacheAdmin(kunciCacheLibur);
+  const warnaPersen = (v) => v >= 90 ? "var(--ijo-tua)" : v >= 75 ? "var(--emas-padi)" : "var(--merah-jaga)";
+  const kartu = (label, nilai, warna) => `
+    <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+      <p class="font-mono text-xs uppercase tracking-wide" style="color:var(--tinta-lembut)">${label}</p>
+      <p class="mt-1 font-display text-2xl font-semibold" style="color:${warna || "var(--ijo-tua)"}">${nilai}</p>
+    </div>`;
+  const barChart = (label, nilai, nilaiMaks, tampilan, warna) => {
+    const persen = nilaiMaks > 0 ? Math.max(0, Math.min(100, (nilai / nilaiMaks) * 100)) : 0;
+    return `
+      <div class="mb-4 last:mb-0">
+        <div class="mb-1.5 flex items-center justify-between text-sm">
+          <span style="color:var(--tinta-lembut)">${label}</span>
+          <span class="font-mono font-semibold" style="color:${warna}">${tampilan}</span>
+        </div>
+        <div class="h-3 w-full overflow-hidden rounded-full" style="background:var(--kertas-gelap)">
+          <div class="h-full rounded-full transition-all" style="width:${persen}%; background:${warna}"></div>
+        </div>
+      </div>`;
+  };
 
-    // Config & libur jarang berubah → kalau ada di cache, pakai itu dulu
-    // (tidak perlu jadi bagian dari request bersamaan ke server). Kalau
-    // tidak ada cache sama sekali (pemakaian pertama), baru diambil live
-    // bersamaan dengan pegawai & rekap seperti biasa.
-    const [resPegawai, resRekap, resLibur, resConfig] = await Promise.all([
-      ambilPegawaiAdmin(),
-      api.getRekapAbsen(TOKEN, { bulan, tahun }),
-      cacheLibur ? Promise.resolve({ libur: cacheLibur }) : api.getLibur(tahun),
-      cacheConfig ? Promise.resolve({ config: cacheConfig }) : ambilConfigAdmin(),
-    ]);
+  const waktu = waktuJakartaSaatIni();
+  const bulan = waktu.bulan, tahun = waktu.tahun;
+  const tanggalHariIni = tanggalISOJakartaSaatIni();
 
-    // Segarkan cache config & libur diam-diam di latar belakang (tidak
-    // ditunggu) supaya kunjungan berikutnya tetap dapat data terbaru, tanpa
-    // menambah beban permintaan bersamaan pada pemuatan Dashboard SEKARANG.
-    if (cacheConfig) ambilConfigAdmin().then(r => simpanCacheAdmin(kunciCacheConfig, r.config)).catch(() => {});
-    else simpanCacheAdmin(kunciCacheConfig, resConfig.config);
-    if (cacheLibur) api.getLibur(tahun).then(r => simpanCacheAdmin(kunciCacheLibur, r.libur || [])).catch(() => {});
-    else simpanCacheAdmin(kunciCacheLibur, resLibur.libur || []);
+  let daftarPegawai = [], rekapBulanIni = [];
+  let config = null, liburList = [];
 
-    const daftarPegawai = urutkanPegawaiKepalaDesaDulu(resPegawai.pegawaiList);
-    const config = resConfig.config;
-    const liburList = resLibur.libur || [];
-    const rekapBulanIni = resRekap.rekap || [];
-
-    const prefixBulan = `${tahun}-${String(bulan).padStart(2, "0")}`;
-    const liburBulanIni = liburList.filter(l => (l.tanggal || "").indexOf(prefixBulan) === 0);
-    const hariKerjaList = hitungHariKerjaBulan(bulan, tahun, config, liburBulanIni);
-    const totalMenitKerjaBulan = hitungTotalMenitKerjaBulan(hariKerjaList, config);
-
-    // --- Status absensi SAAT INI (real-time), sama seperti dipakai halaman absen ---
-    const liburHariIni = cariLiburHariIni(liburList);
-    const status = statusJadwal(config, liburHariIni);
-    const hariIniHariKerja = !liburHariIni && !!cariKelompokJadwal(config, waktu.hariIndex);
-
-    // --- Ringkasan HARI INI: filter rekap bulan berjalan ke tanggal hari ini saja ---
+  function renderHariIni() {
+    const slot = document.getElementById("dashboardSlotHariIni");
     const rekapHariIni = rekapBulanIni.filter(r => r.tanggal === tanggalHariIni);
     const idMasukHariIni = new Set(rekapHariIni.filter(r => r.jenis === "masuk").map(r => r.pegawaiId));
     const idPulangHariIni = new Set(rekapHariIni.filter(r => r.jenis === "pulang").map(r => r.pegawaiId));
@@ -1759,8 +1753,70 @@ async function muatDashboard() {
     const recIjinHariIni = new Map(rekapHariIni.filter(r => r.jenis === "ijin").map(r => [r.pegawaiId, r]));
     const belumAbsenHariIni = daftarPegawai.filter(p => !idMasukHariIni.has(p.id) && !idIjinHariIni.has(p.id));
     const sudahAbsenHariIni = daftarPegawai.filter(p => idMasukHariIni.has(p.id) || idIjinHariIni.has(p.id));
+    // Sebelum config siap, anggap dulu hari kerja (tampilkan daftar apa
+    // adanya) — begitu config datang, renderHariIni() dipanggil ulang
+    // dengan pengecekan yang benar.
+    const hariIniHariKerja = !config ? true : (!cariLiburHariIni(liburList) && !!cariKelompokJadwal(config, waktu.hariIndex));
 
-    // --- Performa BULAN BERJALAN per pegawai (logika sama dengan Laporan Bulanan) ---
+    slot.innerHTML = `
+      <div class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        ${kartu("Jumlah Pegawai", daftarPegawai.length)}
+        ${kartu("Absen Masuk Hari Ini", `${idMasukHariIni.size}/${daftarPegawai.length}`)}
+        ${kartu("Absen Pulang Hari Ini", `${idPulangHariIni.size}/${daftarPegawai.length}`)}
+        ${kartu("Ijin Hari Ini", idIjinHariIni.size)}
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Belum Absen Hari Ini</h3>
+          ${!hariIniHariKerja
+            ? `<p class="text-sm" style="color:var(--tinta-lembut)">Hari ini bukan hari kerja / libur — tidak ada absen yang diharapkan.</p>`
+            : belumAbsenHariIni.length === 0
+              ? `<p class="text-sm" style="color:var(--ijo-tua)">✓ Semua pegawai sudah absen masuk atau ijin hari ini.</p>`
+              : `<ul class="space-y-1.5 text-sm">${belumAbsenHariIni.map(p => `<li class="flex items-center justify-between"><span>${escapeHtml(p.nama)}</span><span class="font-mono text-xs" style="color:var(--tinta-lembut)">${escapeHtml(p.jabatan || "-")}</span></li>`).join("")}</ul>`
+          }
+        </div>
+
+        <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
+          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Sudah Absen / Ijin Hari Ini</h3>
+          ${sudahAbsenHariIni.length === 0
+            ? `<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada pegawai yang absen atau ijin hari ini.</p>`
+            : `<ul class="space-y-1.5 text-sm">${sudahAbsenHariIni.map(p => {
+                let keterangan;
+                if (recIjinHariIni.has(p.id)) {
+                  const ij = recIjinHariIni.get(p.id);
+                  keterangan = `<span class="font-mono text-xs font-semibold" style="color:var(--emas-padi)">📋 Ijin ${escapeHtml(LABEL_ALASAN_IJIN[ij.alasan] || ij.alasan || "")}</span>`;
+                } else {
+                  const jamMasuk = recMasukHariIni.get(p.id)?.jam || "-";
+                  const sudahPulang = recPulangHariIni.has(p.id);
+                  keterangan = `<span class="font-mono text-xs font-semibold" style="color:var(--ijo-tua)">✅ Masuk ${escapeHtml(jamMasuk)}${sudahPulang ? ` · Pulang ${escapeHtml(recPulangHariIni.get(p.id).jam)}` : ""}</span>`;
+                }
+                return `<li class="flex items-center justify-between gap-2"><span>${escapeHtml(p.nama)}</span>${keterangan}</li>`;
+              }).join("")}</ul>`
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  function renderStatusDanPerforma() {
+    const slotStatus = document.getElementById("dashboardSlotStatus");
+    const slotPerforma = document.getElementById("dashboardSlotPerforma");
+
+    const prefixBulan = `${tahun}-${String(bulan).padStart(2, "0")}`;
+    const liburBulanIni = liburList.filter(l => (l.tanggal || "").indexOf(prefixBulan) === 0);
+    const hariKerjaList = hitungHariKerjaBulan(bulan, tahun, config, liburBulanIni);
+    const totalMenitKerjaBulan = hitungTotalMenitKerjaBulan(hariKerjaList, config);
+
+    const liburHariIni = cariLiburHariIni(liburList);
+    const status = statusJadwal(config, liburHariIni);
+
+    slotStatus.innerHTML = `
+      <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:${status.buka ? "rgba(201,154,59,.12)" : "rgba(232,225,206,.5)"}">
+        <p class="font-semibold" style="color:${status.buka ? "var(--emas-padi)" : "var(--tinta-lembut)"}">${status.buka ? "🟡 Absensi sedang DIBUKA" : "⚪ Absensi sedang DITUTUP"}</p>
+        <p class="mt-1 text-sm" style="color:var(--tinta-lembut)">${escapeHtml(status.pesan)}</p>
+      </div>`;
+
     const perPegawai = new Map();
     rekapBulanIni.forEach(r => {
       if (!perPegawai.has(r.pegawaiId)) perPegawai.set(r.pegawaiId, new Map());
@@ -1791,97 +1847,49 @@ async function muatDashboard() {
       return { nama: p.nama, jabatan: p.jabatan || "-", persenHadir, persenEfektif, alpa };
     });
 
-    const rataHadir = performa.length ? Math.round((performa.reduce((s, x) => s + x.persenHadir, 0) / performa.length) * 10) / 10 : 0;
-    const rataEfektif = performa.length ? Math.round((performa.reduce((s, x) => s + x.persenEfektif, 0) / performa.length) * 10) / 10 : 0;
-    const totalAlpaBulan = performa.reduce((s, x) => s + x.alpa, 0);
-    const perluPerhatian = [...performa].filter(x => x.persenHadir < 90).sort((a, b) => a.persenHadir - b.persenHadir).slice(0, 5);
-
-    const warnaPersen = (v) => v >= 90 ? "var(--ijo-tua)" : v >= 75 ? "var(--emas-padi)" : "var(--merah-jaga)";
-    const kartu = (label, nilai, warna) => `
+    slotPerforma.innerHTML = `
       <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
-        <p class="font-mono text-xs uppercase tracking-wide" style="color:var(--tinta-lembut)">${label}</p>
-        <p class="mt-1 font-display text-2xl font-semibold" style="color:${warna || "var(--ijo-tua)"}">${nilai}</p>
-      </div>`;
-
-    // Diagram batang horizontal ringan (tanpa library), dipakai untuk 3
-    // metrik ringkasan bulan berjalan di bawah. "nilai" dan "nilaiMaks"
-    // menentukan panjang batang (0-100%); "tampilan" adalah teks yang
-    // ditulis di kanan (boleh format berbeda dari nilai murni, mis. "257 hari").
-    const barChart = (label, nilai, nilaiMaks, tampilan, warna) => {
-      const persen = nilaiMaks > 0 ? Math.max(0, Math.min(100, (nilai / nilaiMaks) * 100)) : 0;
-      return `
-        <div class="mb-4 last:mb-0">
-          <div class="mb-1.5 flex items-center justify-between text-sm">
-            <span style="color:var(--tinta-lembut)">${label}</span>
-            <span class="font-mono font-semibold" style="color:${warna}">${tampilan}</span>
-          </div>
-          <div class="h-3 w-full overflow-hidden rounded-full" style="background:var(--kertas-gelap)">
-            <div class="h-full rounded-full transition-all" style="width:${persen}%; background:${warna}"></div>
-          </div>
-        </div>`;
-    };
-
-    wrap.innerHTML = `
-      <div class="mb-3 rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:${status.buka ? "rgba(201,154,59,.12)" : "rgba(232,225,206,.5)"}">
-        <p class="font-semibold" style="color:${status.buka ? "var(--emas-padi)" : "var(--tinta-lembut)"}">${status.buka ? "🟡 Absensi sedang DIBUKA" : "⚪ Absensi sedang DITUTUP"}</p>
-        <p class="mt-1 text-sm" style="color:var(--tinta-lembut)">${escapeHtml(status.pesan)}</p>
-      </div>
-
-      <div class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        ${kartu("Jumlah Pegawai", daftarPegawai.length)}
-        ${kartu("Absen Masuk Hari Ini", `${idMasukHariIni.size}/${daftarPegawai.length}`)}
-        ${kartu("Absen Pulang Hari Ini", `${idPulangHariIni.size}/${daftarPegawai.length}`)}
-        ${kartu("Ijin Hari Ini", idIjinHariIni.size)}
-      </div>
-
-      <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
-          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Belum Absen Hari Ini</h3>
-          ${!hariIniHariKerja
-            ? `<p class="text-sm" style="color:var(--tinta-lembut)">Hari ini bukan hari kerja / libur — tidak ada absen yang diharapkan.</p>`
-            : belumAbsenHariIni.length === 0
-              ? `<p class="text-sm" style="color:var(--ijo-tua)">✓ Semua pegawai sudah absen masuk atau ijin hari ini.</p>`
-              : `<ul class="space-y-1.5 text-sm">${belumAbsenHariIni.map(p => `<li class="flex items-center justify-between"><span>${escapeHtml(p.nama)}</span><span class="font-mono text-xs" style="color:var(--tinta-lembut)">${escapeHtml(p.jabatan || "-")}</span></li>`).join("")}</ul>`
-          }
-        </div>
-
-        <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
-          <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Sudah Absen / Ijin Hari Ini</h3>
-          ${sudahAbsenHariIni.length === 0
-            ? `<p class="text-sm" style="color:var(--tinta-lembut)">Belum ada pegawai yang absen atau ijin hari ini.</p>`
-            : `<ul class="space-y-1.5 text-sm">${sudahAbsenHariIni.map(p => {
-                let keterangan;
-                if (recIjinHariIni.has(p.id)) {
-                  const ij = recIjinHariIni.get(p.id);
-                  keterangan = `<span class="font-mono text-xs font-semibold" style="color:var(--emas-padi)">📋 Ijin ${escapeHtml(LABEL_ALASAN_IJIN[ij.alasan] || ij.alasan || "")}</span>`;
-                } else {
-                  const jamMasuk = recMasukHariIni.get(p.id)?.jam || "-";
-                  const sudahPulang = recPulangHariIni.has(p.id);
-                  keterangan = `<span class="font-mono text-xs font-semibold" style="color:var(--ijo-tua)">✅ Masuk ${escapeHtml(jamMasuk)}${sudahPulang ? ` · Pulang ${escapeHtml(recPulangHariIni.get(p.id).jam)}` : ""}</span>`;
-                }
-                return `<li class="flex items-center justify-between gap-2"><span>${escapeHtml(p.nama)}</span>${keterangan}</li>`;
-              }).join("")}</ul>`
-          }
-        </div>
-      </div>
-
-      <div class="mb-6 rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
         <h3 class="mb-3 font-display font-semibold" style="color:var(--ijo-tua)">Kehadiran per Pegawai — ${NAMA_BULAN[bulan - 1]} ${tahun}</h3>
         ${[...performa].sort((a, b) => a.persenHadir - b.persenHadir)
           .map(x => barChart(escapeHtml(x.nama), x.persenHadir, 100, `${x.persenHadir}%`, warnaPersen(x.persenHadir)))
           .join("")}
       </div>
-
-      <div class="rounded-xl p-4" style="border:1px solid var(--kertas-gelap); background:white">
-        <h3 class="mb-4 font-display font-semibold" style="color:var(--ijo-tua)">Ringkasan Performa ${NAMA_BULAN[bulan - 1]} ${tahun}</h3>
-        ${barChart(`Rata² Kehadiran`, rataHadir, 100, `${rataHadir}%`, warnaPersen(rataHadir))}
-        ${barChart(`Rata² Jam Efektif`, rataEfektif, 100, `${rataEfektif}%`, warnaPersen(rataEfektif))}
-        ${barChart(`Total Alpa (dari ${hariKerjaList.length * daftarPegawai.length} slot hari-kerja×pegawai)`, totalAlpaBulan, hariKerjaList.length * daftarPegawai.length, `${totalAlpaBulan} hari`, totalAlpaBulan > 0 ? "var(--merah-jaga)" : "var(--ijo-tua)")}
-      </div>
       <p class="mt-3 font-mono text-xs" style="color:var(--tinta-lembut)">Data performa bulan berjalan dihitung dengan logika yang sama seperti tab Laporan Bulanan (${hariKerjaList.length} hari kerja, ${formatDurasiJam(totalMenitKerjaBulan)} jam kerja resmi bulan ${NAMA_BULAN[bulan - 1]} ${tahun}). Buka tab <b>Laporan Bulanan</b> untuk rincian per pegawai.</p>
     `;
+  }
+
+  try {
+    const [resPegawai, resRekap] = await Promise.all([
+      ambilPegawaiAdmin(),
+      api.getRekapAbsen(TOKEN, { bulan, tahun }),
+    ]);
+    daftarPegawai = urutkanPegawaiKepalaDesaDulu(resPegawai.pegawaiList);
+    rekapBulanIni = resRekap.rekap || [];
+    renderHariIni();
   } catch (err) {
-    wrap.innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">${escapeHtml(err.message)}</p>`;
+    document.getElementById("dashboardSlotHariIni").innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">${escapeHtml(err.message)}</p>`;
+  }
+
+  const kunciCacheConfig = "absensi_cache_config";
+  const kunciCacheLibur = "absensi_cache_libur_" + tahun;
+  const cacheConfig = ambilCacheAdmin(kunciCacheConfig);
+  const cacheLibur = ambilCacheAdmin(kunciCacheLibur);
+  try {
+    const [resLibur, resConfig] = await Promise.all([
+      cacheLibur ? Promise.resolve({ libur: cacheLibur }) : api.getLibur(tahun),
+      cacheConfig ? Promise.resolve({ config: cacheConfig }) : ambilConfigAdmin(),
+    ]);
+    if (cacheConfig) ambilConfigAdmin().then(r => simpanCacheAdmin(kunciCacheConfig, r.config)).catch(() => {});
+    else simpanCacheAdmin(kunciCacheConfig, resConfig.config);
+    if (cacheLibur) api.getLibur(tahun).then(r => simpanCacheAdmin(kunciCacheLibur, r.libur || [])).catch(() => {});
+    else simpanCacheAdmin(kunciCacheLibur, resLibur.libur || []);
+
+    config = resConfig.config;
+    liburList = resLibur.libur || [];
+    renderStatusDanPerforma();
+    renderHariIni();
+  } catch (err) {
+    document.getElementById("dashboardSlotStatus").innerHTML = `<p class="text-sm" style="color:var(--merah-jaga)">Gagal memuat jadwal: ${escapeHtml(err.message)}</p>`;
   } finally {
     if (btnMuatUlang) { btnMuatUlang.disabled = false; btnMuatUlang.style.opacity = "1"; }
     if (ikonMuatUlang) ikonMuatUlang.style.animation = "";
